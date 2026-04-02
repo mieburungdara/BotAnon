@@ -66,9 +66,6 @@ function registerMessageHandler(bot, findMatchForUser) {
           } else if (err.response && err.response.error_code === 429) {
             // Rate limited — don't bother the user, just log it
             logger.warn(err, 'Message forwarding rate limited');
-          } else if (err.response && err.response.error_code === 429) {
-            // Rate limited — don't bother the user, just log it
-            logger.warn(err, 'Message forwarding rate limited');
           } else {
             // Transient error — log it but don't end the chat
             logger.error(err, 'Message forwarding error (non-fatal)');

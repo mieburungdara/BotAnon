@@ -22,11 +22,5 @@ function createCommandSceneGuard() {
     return next();
   };
 }
-        await ctx.scene.leave();
-      }
-    }
-    return next();
-  };
-}
 
 module.exports = { createCommandSceneGuard };
