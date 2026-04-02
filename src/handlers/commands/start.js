@@ -22,6 +22,11 @@ function registerStartCommand(bot, findMatchForUser) {
       const user = await getUserByTelegramId(tid);
       if (!user) {
         const u = await createUser(tid, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
+        if (!u) {
+          logger.error({ tid }, 'Failed to create user record');
+          if (ctx.session) ctx.session.processing = false;
+          return ctx.reply(t('something_went_wrong', 'English'));
+        }
         await ctx.reply(t('welcome_incomplete', 'English'));
         await ctx.scene.enter('profileSetup');
         if (ctx.session) ctx.session.processing = false;

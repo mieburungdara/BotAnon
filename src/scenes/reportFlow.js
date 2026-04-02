@@ -97,6 +97,10 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
       const lang = ctx.session.language || 'English';
       const markup = { inline_keyboard: [[{ text: t('btn_submit_report', lang), callback_data: 'confirm_submit' }]] };
       await ctx.reply(t('evidence_added_next_or_submit', lang), { reply_markup: markup });
+    } else {
+      // FIX Bug #28: Provide feedback for unsupported message types
+      const lang = ctx.session.language || 'English';
+      await ctx.reply(t('report_unsupported_evidence', lang) || '⚠️ Please send text, media, or type "skip".');
     }
   });
 

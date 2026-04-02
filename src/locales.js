@@ -69,6 +69,7 @@ const locales = {
     unauthorized_rating: '❌ You can only rate people you have chatted with.',
     message_delivery_failed: '⚠️ Message delivery failed.',
     anti_spam_warning: "Please don't spam!",
+    report_unsupported_evidence: "⚠️ Please send text, media, or type 'skip'.",
   },
   Indonesian: {
     please_enter_age: 'Mohon masukkan umur Anda:',
@@ -137,6 +138,7 @@ const locales = {
     unauthorized_rating: '❌ Anda hanya bisa menilai orang yang pernah mengobrol dengan Anda.',
     message_delivery_failed: '⚠️ Pesan gagal dikirim.',
     anti_spam_warning: 'Jangan terburu-buru!',
+    report_unsupported_evidence: "⚠️ Harap kirim teks, media, atau ketik 'skip'.",
   },
   Spanish: {
     please_enter_age: 'Por favor ingrese su edad:',
@@ -205,6 +207,7 @@ const locales = {
     unauthorized_rating: '❌ Solo puedes calificar a personas con las que has chateado.',
     message_delivery_failed: '⚠️ Error en la entrega del mensaje.',
     anti_spam_warning: '¡No hagas spam!',
+    report_unsupported_evidence: "⚠️ Envía texto, multimedia o escribe 'skip'.",
   },
   French: {
     please_enter_age: 'Veuillez entrer votre âge :',
@@ -273,6 +276,7 @@ const locales = {
     unauthorized_rating: '❌ Vous ne pouvez noter que les personnes avec qui vous avez discuté.',
     message_delivery_failed: '⚠️ Échec de la livraison du message.',
     anti_spam_warning: "Ne spammez pas !",
+    report_unsupported_evidence: "⚠️ Envoyez du texte, des médias ou tapez 'skip'.",
   },
   Arabic: {
     please_enter_age: 'الرجاء إدخال عمرك:',
@@ -341,6 +345,7 @@ const locales = {
     unauthorized_rating: '❌ يمكنك فقط تقييم الأشخاص الذين تحدثت معهم.',
     message_delivery_failed: '⚠️ فشل تسليم الرسالة.',
     anti_spam_warning: 'من فضلك لا تكرر الرسائل!',
+    report_unsupported_evidence: "⚠️ يرجى إرسال نص أو وسائط أو اكتب 'skip'.",
   }
 };
 
