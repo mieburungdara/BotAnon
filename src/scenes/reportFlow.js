@@ -21,38 +21,64 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
   reportFlow.action(/rep_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
-    const lang = ctx.session.language || 'English';
-    const rMap = { spam: 'Spam/Advertising', harassment: 'Harassment/Abuse', inappropriate: 'Inappropriate Content', other: 'Other' };
-    ctx.session.reportReason = rMap[ctx.match[1]] || 'Other';
-    if (ctx.session.reportChatId) {
-      let partnerForRematch = null;
-      let partnerLangForRematch = 'English';
-      try {
-        await db.transaction(async (tx) => {
-          await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [ctx.session.reportChatId]);
-          await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['idle', ctx.session.userId]);
-          const partner = await getUserById(ctx.session.reportedId);
-          if (partner && partner.state !== 'idle') {
-            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['waiting', partner.id]);
-            partnerForRematch = partner;
-            partnerLangForRematch = partner.language || 'English';
-          }
-        });
-        // FIX Bug #7: Move Telegram I/O outside the database transaction
-        if (partnerForRematch) {
-          try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
-          await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
-          findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch).catch(err => logger.error(err, 'findMatchForUser error'));
-        }
-      } catch (err) { logger.error(err, 'Report chat cleanup error'); }
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) {
+      // Callback query may have expired — reset and exit
+      ctx.session.processing = false;
+      return;
     }
-    const text = t('report_details_prompt', lang);
-    const markup = { inline_keyboard: [[{ text: t('btn_skip', lang), callback_data: 'skip_details' }]] };
-    if (ctx.session.reportMsgId) {
-      try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.reportMsgId, null, text, { reply_markup: markup }); } catch (e) { await ctx.reply(text, { reply_markup: markup }); }
-    } else { await ctx.reply(text, { reply_markup: markup }); }
-    ctx.session.processing = false;
+    try {
+      const lang = ctx.session.language || 'English';
+      const rMap = { spam: 'Spam/Advertising', harassment: 'Harassment/Abuse', inappropriate: 'Inappropriate Content', other: 'Other' };
+      ctx.session.reportReason = rMap[ctx.match[1]] || 'Other';
+      if (ctx.session.reportChatId) {
+        let partnerForRematch = null;
+        let partnerLangForRematch = 'English';
+        try {
+          await db.transaction(async (tx) => {
+            await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [ctx.session.reportChatId]);
+            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['idle', ctx.session.userId]);
+            const partner = await getUserById(ctx.session.reportedId);
+            if (partner && partner.state !== 'idle') {
+              await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['waiting', partner.id]);
+              partnerForRematch = partner;
+              partnerLangForRematch = partner.language || 'English';
+            }
+          });
+          // FIX Bug #7: Move Telegram I/O outside the database transaction
+          if (partnerForRematch) {
+            try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
+            await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
+            findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch).catch(err => logger.error(err, 'findMatchForUser error'));
+          }
+        } catch (err) { logger.error(err, 'Report chat cleanup error'); }
+      }
+      const text = t('report_details_prompt', lang);
+      const markup = { inline_keyboard: [[{ text: t('btn_skip', lang), callback_data: 'skip_details' }]] };
+      if (ctx.session.reportMsgId) {
+        try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.reportMsgId, null, text, { reply_markup: markup }); } catch (e) { await ctx.reply(text, { reply_markup: markup }); }
+      } else { await ctx.reply(text, { reply_markup: markup }); }
+    } finally {
+      ctx.session.processing = false;
+    }
+  });
+          // FIX Bug #7: Move Telegram I/O outside the database transaction
+          if (partnerForRematch) {
+            try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
+            await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
+            findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch).catch(err => logger.error(err, 'findMatchForUser error'));
+          }
+        } catch (err) { logger.error(err, 'Report chat cleanup error'); }
+      }
+      const text = t('report_details_prompt', lang);
+      const markup = { inline_keyboard: [[{ text: t('btn_skip', lang), callback_data: 'skip_details' }]] };
+      if (ctx.session.reportMsgId) {
+        try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.reportMsgId, null, text, { reply_markup: markup }); } catch (e) { await ctx.reply(text, { reply_markup: markup }); }
+      } else { await ctx.reply(text, { reply_markup: markup }); }
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 
   reportFlow.action('skip_details', async (ctx) => {

@@ -16,7 +16,7 @@ async function getActiveChatByUserId(userId) {
 
 async function getLastPartnerByUserId(userId) {
   try {
-    const res = await db.query('SELECT * FROM chats WHERE (user1_id = $1 OR user2_id = $1) AND user2_id IS NOT NULL ORDER BY started_at DESC LIMIT 1', [userId]);
+    const res = await db.query('SELECT * FROM chats WHERE (user1_id = $1 OR user2_id = $1) AND user2_id IS NOT NULL AND user1_id != user2_id ORDER BY started_at DESC LIMIT 1', [userId]);
     return res.rows[0];
   } catch (err) {
     logger.error(err, `Error in getLastPartnerByUserId (${userId})`);

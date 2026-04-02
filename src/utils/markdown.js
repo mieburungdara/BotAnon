@@ -5,7 +5,8 @@
  * @returns {string} Escaped text safe for Telegram MarkdownV2 parse mode
  */
 function escapeMarkdown(text) {
-  return text ? text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1') : text;
+  if (!text) return '';
+  return text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
 }
 
 module.exports = { escapeMarkdown };

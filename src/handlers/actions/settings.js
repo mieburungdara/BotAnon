@@ -17,7 +17,7 @@ function registerSettingsActions(bot) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
-    } catch (e) {}
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_age'); }
     await ctx.scene.enter('settingsAgeScene');
     ctx.session.processing = false;
   });
@@ -32,7 +32,7 @@ function registerSettingsActions(bot) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
-    } catch (e) {}
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_gender'); }
     const lang = ctx.session.language || 'English';
     await ctx.editMessageText(t('select_gender_settings', lang), { reply_markup: { inline_keyboard: [[{ text: t('btn_male', lang), callback_data: 'set_gender_male' }], [{ text: t('btn_female', lang), callback_data: 'set_gender_female' }]] } });
     ctx.session.processing = false;
@@ -48,7 +48,7 @@ function registerSettingsActions(bot) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
-    } catch (e) {}
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_language'); }
     const lang = ctx.session.language || 'English';
     await ctx.editMessageText(t('select_language_settings', lang), { reply_markup: { inline_keyboard: [[{ text: 'English', callback_data: 'set_lang_en' }], [{ text: 'Indonesian', callback_data: 'set_lang_id' }], [{ text: 'Spanish', callback_data: 'set_lang_es' }], [{ text: 'French', callback_data: 'set_lang_fr' }], [{ text: 'Arabic (العربية)', callback_data: 'set_lang_ar' }]] } });
     ctx.session.processing = false;
@@ -64,7 +64,7 @@ function registerSettingsActions(bot) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
-    } catch (e) {}
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_zodiac'); }
     const lang = ctx.session.language || 'English';
     const zKeys = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
     const sObj = t('zodiac_signs', lang) || {};

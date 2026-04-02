@@ -39,7 +39,7 @@ function registerMessageHandler(bot, findMatchForUser) {
       else if (msg.contact) { type = 'contact'; }
       
       await saveMessage(activeChat.id, tid, msg.text || msg.caption || null, type || 'text', fid);
-      if (partner) {
+      if (partner && partner.telegram_id) {
         try {
           const action = (type === 'photo' || type === 'video') ? 'upload_photo' : 'typing';
           await ctx.telegram.sendChatAction(partner.telegram_id, action);

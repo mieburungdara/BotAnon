@@ -65,7 +65,11 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
         } catch (w) {}
       }
     }
-  } catch (err) { logger.error(err, 'Submit report error'); }
+  } catch (err) {
+    logger.error(err, 'Submit report error');
+    const lang = ctx.session.language || 'English';
+    await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
+  }
   ctx.session.reportDetails = null;
   ctx.session.attachedEvidence = null;
   ctx.session.reportedId = null;
@@ -166,8 +170,9 @@ async function startBot() {
             res.end(JSON.stringify({ status: 'not_ready', db: dbHealthy ? 'connected' : 'disconnected', bot: botReady ? 'launched' : 'pending' }));
           }
         } catch (err) {
+          logger.error(err, 'Health readiness check failed');
           res.writeHead(503, headers);
-          res.end(JSON.stringify({ status: 'not_ready', db: 'error', error: err.message }));
+          res.end(JSON.stringify({ status: 'not_ready', db: 'error' }));
         }
       } else { res.writeHead(404, headers); res.end(JSON.stringify({ error: 'not_found' })); }
     });

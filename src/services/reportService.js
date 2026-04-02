@@ -38,14 +38,14 @@ function extractEvidenceFromReply(replyToMessage) {
   if (replyToMessage) {
     const rm = replyToMessage;
     let type = 'text', fid = '', content = rm.text || rm.caption || '';
-    if (rm.photo) { type = 'photo'; fid = rm.photo[rm.photo.length - 1].file_id; }
-    else if (rm.video) { type = 'video'; fid = rm.video.file_id; }
-    else if (rm.animation) { type = 'animation'; fid = rm.animation.file_id; }
-    else if (rm.document) { type = 'document'; fid = rm.document.file_id; }
-    else if (rm.voice) { type = 'voice'; fid = rm.voice.file_id; }
-    else if (rm.audio) { type = 'audio'; fid = rm.audio.file_id; }
-    else if (rm.sticker) { type = 'sticker'; fid = rm.sticker.file_id; }
-    else if (rm.video_note) { type = 'video_note'; fid = rm.video_note.file_id; }
+    if (rm.photo && rm.photo.length > 0) { type = 'photo'; fid = rm.photo[rm.photo.length - 1].file_id; }
+    else if (rm.video && rm.video.file_id) { type = 'video'; fid = rm.video.file_id; }
+    else if (rm.animation && rm.animation.file_id) { type = 'animation'; fid = rm.animation.file_id; }
+    else if (rm.document && rm.document.file_id) { type = 'document'; fid = rm.document.file_id; }
+    else if (rm.voice && rm.voice.file_id) { type = 'voice'; fid = rm.voice.file_id; }
+    else if (rm.audio && rm.audio.file_id) { type = 'audio'; fid = rm.audio.file_id; }
+    else if (rm.sticker && rm.sticker.file_id) { type = 'sticker'; fid = rm.sticker.file_id; }
+    else if (rm.video_note && rm.video_note.file_id) { type = 'video_note'; fid = rm.video_note.file_id; }
     else if (rm.location) { type = 'location'; }
     else if (rm.contact) { type = 'contact'; }
     ev = `[EVIDENCE] Type: ${type}${fid ? ' | FID: '+fid : ''}${content ? ' | Content: '+content : ''}`;
@@ -55,14 +55,14 @@ function extractEvidenceFromReply(replyToMessage) {
 
 function extractEvidenceFromMessage(msg) {
   let ev = "";
-  if (msg.photo) ev = `[MEDIA_PHOTO] file_id: ${msg.photo[msg.photo.length-1].file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
-  else if (msg.video) ev = `[MEDIA_VIDEO] file_id: ${msg.video.file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
-  else if (msg.animation) ev = `[MEDIA_ANIMATION] file_id: ${msg.animation.file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
-  else if (msg.voice) ev = `[MEDIA_VOICE] file_id: ${msg.voice.file_id}`;
-  else if (msg.document) ev = `[MEDIA_DOC] file_id: ${msg.document.file_id}`;
-  else if (msg.audio) ev = `[MEDIA_AUDIO] file_id: ${msg.audio.file_id}`;
-  else if (msg.sticker) ev = `[MEDIA_STICKER] file_id: ${msg.sticker.file_id}`;
-  else if (msg.video_note) ev = `[MEDIA_VIDEO_NOTE] file_id: ${msg.video_note.file_id}`;
+  if (msg.photo && msg.photo.length > 0) ev = `[MEDIA_PHOTO] file_id: ${msg.photo[msg.photo.length-1].file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
+  else if (msg.video && msg.video.file_id) ev = `[MEDIA_VIDEO] file_id: ${msg.video.file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
+  else if (msg.animation && msg.animation.file_id) ev = `[MEDIA_ANIMATION] file_id: ${msg.animation.file_id}${msg.caption ? ' | Caption: ' + msg.caption : ''}`;
+  else if (msg.voice && msg.voice.file_id) ev = `[MEDIA_VOICE] file_id: ${msg.voice.file_id}`;
+  else if (msg.document && msg.document.file_id) ev = `[MEDIA_DOC] file_id: ${msg.document.file_id}`;
+  else if (msg.audio && msg.audio.file_id) ev = `[MEDIA_AUDIO] file_id: ${msg.audio.file_id}`;
+  else if (msg.sticker && msg.sticker.file_id) ev = `[MEDIA_STICKER] file_id: ${msg.sticker.file_id}`;
+  else if (msg.video_note && msg.video_note.file_id) ev = `[MEDIA_VIDEO_NOTE] file_id: ${msg.video_note.file_id}`;
   else if (msg.location) ev = `[MEDIA_LOCATION] lat: ${msg.location.latitude}, lon: ${msg.location.longitude}`;
   else if (msg.contact) ev = `[MEDIA_CONTACT] name: ${msg.contact.first_name}, phone: ${msg.contact.phone_number}`;
   else if (msg.text) ev = msg.text;
