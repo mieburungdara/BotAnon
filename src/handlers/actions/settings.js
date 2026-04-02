@@ -131,7 +131,7 @@ function registerSettingsActions(bot) {
   bot.action(/set_zodiac_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const zKeys = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
       if (!zKeys.includes(ctx.match[1])) { ctx.session.processing = false; return; }
@@ -148,7 +148,24 @@ function registerSettingsActions(bot) {
   bot.action(/set_gender_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
+    try {
+      const gender = ctx.match[1];
+      if (gender !== 'male' && gender !== 'female') { ctx.session.processing = false; return; }
+      await updateUserProfile(ctx.from.id, null, gender, null);
+      const user = await getUserByTelegramId(ctx.from.id);
+      const lang = (user && user.language) || 'English';
+      await ctx.editMessageText(t('zodiac_updated', lang));
+    } catch (err) {
+      logger.error(err, 'Zodiac update error');
+    }
+    ctx.session.processing = false;
+  });
+
+  bot.action(/set_gender_(.+)/, async (ctx) => {
+    if (ctx.session.processing) return ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const gender = ctx.match[1];
       if (gender !== 'male' && gender !== 'female') { ctx.session.processing = false; return; }
@@ -165,7 +182,7 @@ function registerSettingsActions(bot) {
   bot.action(/set_lang_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const langMap = { en: 'English', id: 'Indonesian', es: 'Spanish', fr: 'French', ar: 'Arabic' };
       const language = langMap[ctx.match[1]];

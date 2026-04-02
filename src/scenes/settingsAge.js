@@ -16,7 +16,8 @@ function createSettingsAgeScene() {
 
   settingsAgeScene.action('cancel_setting', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     await ctx.editMessageText(t('setting_cancelled', ctx.session.language || 'English'));
     ctx.session.processing = false;
     await ctx.scene.leave();
