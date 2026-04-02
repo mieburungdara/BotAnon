@@ -70,11 +70,13 @@ function createSqliteAdapter() {
         // Fetch the updated row using the WHERE clause condition
         const tableName = extractTableName(convertedSql, 'UPDATE');
         // Match the first column=value pattern in WHERE clause to find the unique key
-        const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/i);
+        // FIX Bug #46: Use regex to find the first WHERE clause (not inside subqueries)
+        const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/is);
         if (whereMatch) {
           const conditions = whereMatch[1];
-          // Find the index of the first '?' in the conditions string relative to the whole query
-          const beforeWhere = convertedSql.split(/WHERE/i)[0];
+          // Count placeholders before the first WHERE by finding its position
+          const firstWhereIdx = convertedSql.search(/WHERE\s/i);
+          const beforeWhere = firstWhereIdx >= 0 ? convertedSql.substring(0, firstWhereIdx) : '';
           const placeholdersBeforeWhere = (beforeWhere.match(/\?/g) || []).length;
           
           const colMatches = [...conditions.matchAll(/(\w+)\s*=\s*\?/g)];
@@ -137,10 +139,12 @@ function createSqliteAdapter() {
               const stmt = sqlite.prepare(withoutReturning);
               stmt.run(...expandedParams);
               const tableName = extractTableName(convertedSql, 'UPDATE');
-              const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/i);
+              // FIX Bug #46: Use regex to find the first WHERE clause (not inside subqueries)
+              const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/is);
               if (whereMatch) {
                 const conditions = whereMatch[1];
-                const beforeWhere = convertedSql.split(/WHERE/i)[0];
+                const firstWhereIdx = convertedSql.search(/WHERE\s/i);
+                const beforeWhere = firstWhereIdx >= 0 ? convertedSql.substring(0, firstWhereIdx) : '';
                 const placeholdersBeforeWhere = (beforeWhere.match(/\?/g) || []).length;
                 const colMatches = [...conditions.matchAll(/(\w+)\s*=\s*\?/g)];
                 if (colMatches.length > 0) {

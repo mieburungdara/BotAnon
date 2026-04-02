@@ -8,6 +8,7 @@ const { getActiveChatByUserId } = require('../../services/chatService');
 function registerSettingsCommand(bot) {
   bot.command('settings', async (ctx) => {
     if (ctx.session) {
+      if (ctx.session.processing) return;
       ctx.session.setting = null;
       ctx.session.attachedEvidence = null;
       ctx.session.reportedId = null;

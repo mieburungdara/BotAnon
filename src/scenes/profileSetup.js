@@ -85,7 +85,7 @@ function createProfileSetupScene(findMatchForUser) {
     await ctx.editMessageText(t('profile_completed', lang));
     // FIX Bugs #2,#3: Wrap findMatchForUser in try/catch and reset processing after scene.leave()
     try {
-      await findMatchForUser(tid, lang).catch(e => logger.error(e, 'Profile setup match error'));
+      await findMatchForUser(tid, lang);
     } catch (e) {
       logger.error(e, 'Profile setup match error');
     }

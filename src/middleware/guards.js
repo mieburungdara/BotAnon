@@ -5,7 +5,9 @@ const { t } = require('../locales');
 
 function createCommandSceneGuard() {
   return async (ctx, next) => {
-    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) { 
+    if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) {
+      // Don't interrupt if another operation is processing
+      if (ctx.session && ctx.session.processing) return next();
       if (ctx.scene && ctx.scene.current) {
         if (ctx.session) {
           ctx.session.reportDetails = null;
@@ -14,7 +16,13 @@ function createCommandSceneGuard() {
           ctx.session.reportChatId = null;
           ctx.session.reportReason = null;
         }
-        await ctx.scene.leave(); 
+        await ctx.scene.leave();
+      }
+    }
+    return next();
+  };
+}
+        await ctx.scene.leave();
       }
     }
     return next();
