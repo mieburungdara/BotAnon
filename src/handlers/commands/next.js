@@ -54,8 +54,6 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
           }
           await sendRatingPrompt(tid, partnerDbId, lang);
         }
-          await sendRatingPrompt(tid, partnerDbId, lang);
-        }
       } else {
         await updateUserState(tid, 'waiting');
       }

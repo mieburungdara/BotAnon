@@ -62,7 +62,7 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
           const { escapeMarkdown } = require('./utils/markdown');
           const safeWarn = escapeMarkdown(t('auto_warn_message', repUser.language || 'English'));
           await ctx.telegram.sendMessage(repUser.telegram_id, safeWarn, { parse_mode: 'MarkdownV2' });
-        } catch (w) {}
+        } catch (w) { logger.warn(w, 'Failed to send auto-warn message'); }
       }
     }
   } catch (err) {

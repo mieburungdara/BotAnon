@@ -66,10 +66,16 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
 
   reportFlow.action('skip_details', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
-    ctx.session.reportDetails = "";
-    await submitReport(ctx);
-    ctx.session.processing = false;
+    ctx.session.processing = true;
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) { ctx.session.processing = false; return; }
+    try {
+      ctx.session.reportDetails = "";
+      await submitReport(ctx);
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 
   reportFlow.on('message', async (ctx) => {
@@ -96,9 +102,15 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
 
   reportFlow.action('confirm_submit', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
-    await submitReport(ctx);
-    ctx.session.processing = false;
+    ctx.session.processing = true;
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) { ctx.session.processing = false; return; }
+    try {
+      await submitReport(ctx);
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 
   return reportFlow;
