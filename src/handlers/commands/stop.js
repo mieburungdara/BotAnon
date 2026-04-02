@@ -55,8 +55,6 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
           }
           await sendRatingPrompt(tid, partnerDbId, lang);
         }
-          await sendRatingPrompt(tid, partnerDbId, lang);
-        }
         await ctx.reply(t('chat_ended', lang));
       } else if (user.state === 'waiting') {
         await updateUserState(tid, 'idle');
