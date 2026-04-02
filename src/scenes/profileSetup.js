@@ -45,7 +45,8 @@ function createProfileSetupScene(findMatchForUser) {
 
   profileSetup.action(/gender_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     const lang = ctx.session.language || 'English';
     const gender = ctx.match[1];
     if (gender !== 'male' && gender !== 'female') { ctx.session.processing = false; return; }
@@ -56,7 +57,8 @@ function createProfileSetupScene(findMatchForUser) {
 
   profileSetup.action(/lang_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     const langMap = { en: 'English', id: 'Indonesian', es: 'Spanish', fr: 'French', ar: 'Arabic' };
     const language = langMap[ctx.match[1]];
     if (!language) { ctx.session.processing = false; return; }
@@ -75,7 +77,8 @@ function createProfileSetupScene(findMatchForUser) {
 
   profileSetup.action(/zodiac_(.+)/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
-    ctx.session.processing = true; await ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     const zodiac = ctx.match[1];
     const zKeys = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
     if (!zKeys.includes(zodiac)) { ctx.session.processing = false; return; }
