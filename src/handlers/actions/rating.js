@@ -10,7 +10,9 @@ function registerRatingAction(bot) {
   bot.action(/^rate_(\d+)_(pos|neg)$/, async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try {
+      await ctx.answerCbQuery();
+    } catch (e) { ctx.session.processing = false; return; }
     try {
       const ratedId = parseInt(ctx.match[1], 10);
       const score = ctx.match[2] === 'pos' ? 1 : -1;

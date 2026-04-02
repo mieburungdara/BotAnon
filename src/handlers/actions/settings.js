@@ -10,7 +10,7 @@ function registerSettingsActions(bot) {
   bot.action('setting_age', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
       if (user && await getActiveChatByUserId(user.id)) {
@@ -25,7 +25,7 @@ function registerSettingsActions(bot) {
   bot.action('setting_gender', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
       if (user && await getActiveChatByUserId(user.id)) {
@@ -41,7 +41,7 @@ function registerSettingsActions(bot) {
   bot.action('setting_language', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
       if (user && await getActiveChatByUserId(user.id)) {
@@ -57,7 +57,60 @@ function registerSettingsActions(bot) {
   bot.action('setting_zodiac', async (ctx) => {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
-    await ctx.answerCbQuery();
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
+    try {
+      const user = await getUserByTelegramId(ctx.from.id);
+      if (user && await getActiveChatByUserId(user.id)) {
+        ctx.session.processing = false;
+        return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
+      }
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_zodiac'); }
+    const lang = ctx.session.language || 'English';
+    const zKeys = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+    const sObj = t('zodiac_signs', lang) || {};
+    const buttons = [];
+    for (let i = 0; i < zKeys.length; i += 3)
+      buttons.push(zKeys.slice(i, i + 3).map(z => ({ text: sObj[z] || z, callback_data: `set_zodiac_${z}` })));
+    await ctx.editMessageText(t('select_zodiac', lang), { reply_markup: { inline_keyboard: buttons } });
+    ctx.session.processing = false;
+  });
+
+  bot.action('setting_gender', async (ctx) => {
+    if (ctx.session.processing) return ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
+    try {
+      const user = await getUserByTelegramId(ctx.from.id);
+      if (user && await getActiveChatByUserId(user.id)) {
+        ctx.session.processing = false;
+        return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
+      }
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_gender'); }
+    const lang = ctx.session.language || 'English';
+    await ctx.editMessageText(t('select_gender_settings', lang), { reply_markup: { inline_keyboard: [[{ text: t('btn_male', lang), callback_data: 'set_gender_male' }], [{ text: t('btn_female', lang), callback_data: 'set_gender_female' }]] } });
+    ctx.session.processing = false;
+  });
+
+  bot.action('setting_language', async (ctx) => {
+    if (ctx.session.processing) return ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
+    try {
+      const user = await getUserByTelegramId(ctx.from.id);
+      if (user && await getActiveChatByUserId(user.id)) {
+        ctx.session.processing = false;
+        return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
+      }
+    } catch (e) { logger.error(e, 'Settings guard check failed for setting_language'); }
+    const lang = ctx.session.language || 'English';
+    await ctx.editMessageText(t('select_language_settings', lang), { reply_markup: { inline_keyboard: [[{ text: 'English', callback_data: 'set_lang_en' }], [{ text: 'Indonesian', callback_data: 'set_lang_id' }], [{ text: 'Spanish', callback_data: 'set_lang_es' }], [{ text: 'French', callback_data: 'set_lang_fr' }], [{ text: 'Arabic (العربية)', callback_data: 'set_lang_ar' }]] } });
+    ctx.session.processing = false;
+  });
+
+  bot.action('setting_zodiac', async (ctx) => {
+    if (ctx.session.processing) return ctx.answerCbQuery();
+    ctx.session.processing = true;
+    try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
       if (user && await getActiveChatByUserId(user.id)) {

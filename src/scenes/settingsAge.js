@@ -23,13 +23,22 @@ function createSettingsAgeScene() {
   });
 
   settingsAgeScene.on('text', async (ctx) => {
-    const lang = ctx.session.language || 'English';
-    const age = parseInt(ctx.message.text, 10);
-    try { await ctx.deleteMessage(ctx.message.message_id); } catch (err) {}
-    if (isNaN(age) || age < 1 || age > 150) return ctx.reply(t('invalid_age', lang));
-    await updateUserProfile(ctx.from.id, age, null, null);
-    await ctx.reply(t('age_updated', lang));
-    await ctx.scene.leave();
+    if (ctx.session.processing) return;
+    ctx.session.processing = true;
+    try {
+      const lang = ctx.session.language || 'English';
+      const age = parseInt(ctx.message.text, 10);
+      try { await ctx.deleteMessage(ctx.message.message_id); } catch (err) {}
+      if (isNaN(age) || age < 1 || age > 150) {
+        ctx.session.processing = false;
+        return ctx.reply(t('invalid_age', lang));
+      }
+      await updateUserProfile(ctx.from.id, age, null, null);
+      await ctx.reply(t('age_updated', lang));
+      await ctx.scene.leave();
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 
   settingsAgeScene.on('message', async (ctx, next) => {
