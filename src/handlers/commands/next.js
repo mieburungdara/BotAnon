@@ -46,9 +46,15 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
         });
         if (partnerTelegramId) {
           try { await ctx.telegram.sendMessage(partnerTelegramId, t('partner_ended_chat', partnerLang)); } catch (pErr) {}
-          await sendRatingPrompt(partnerTelegramId, user.id, partnerLang);
+          // FIX Bug #34: Re-fetch partner to check if they've already been matched with someone else
+          const freshPartner = await getUserById(partnerDbId);
+          if (freshPartner && freshPartner.state === 'waiting') {
+            await sendRatingPrompt(partnerTelegramId, user.id, partnerLang);
+            findMatchForUser(partnerTelegramId, partnerLang).catch(e => logger.error(e));
+          }
           await sendRatingPrompt(tid, partnerDbId, lang);
-          findMatchForUser(partnerTelegramId, partnerLang).catch(e => logger.error(e));
+        }
+          await sendRatingPrompt(tid, partnerDbId, lang);
         }
       } else {
         await updateUserState(tid, 'waiting');
