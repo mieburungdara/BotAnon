@@ -49,14 +49,21 @@ function registerMessageHandler(bot, findMatchForUser) {
           // Transient errors (rate limiting, network) should NOT end the chat.
           if (err.response && err.response.error_code === 403) {
             // Partner blocked the bot — end the chat
+            // Re-fetch partner to get their current state before deciding what to do
+            const freshPartner = await getUserById(partnerId);
             await db.transaction(async (tx) => {
               await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [activeChat.id]);
-              await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['waiting', partner.telegram_id.toString()]);
+              // Only re-queue partner if they were actively chatting (not idle)
+              const partnerState = (freshPartner && freshPartner.state === 'chatting') ? 'waiting' : (freshPartner ? freshPartner.state : 'waiting');
+              await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', [partnerState, partner.telegram_id.toString()]);
               await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['waiting', tid.toString()]);
             });
             await ctx.reply(t('partner_not_found', lang));
             findMatchForUser(tid, lang).catch(e => logger.error(e));
-            findMatchForUser(partner.telegram_id, partner.language || 'English').catch(e => logger.error(e));
+            if (freshPartner && freshPartner.state === 'chatting') {
+              findMatchForUser(partner.telegram_id, partner.language || 'English').catch(e => logger.error(e));
+            }
+            }
           } else {
             // Transient error — log it but don't end the chat
             logger.error(err, 'Message forwarding error (non-fatal)');
