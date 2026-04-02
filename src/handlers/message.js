@@ -63,8 +63,13 @@ function registerMessageHandler(bot, findMatchForUser) {
             if (freshPartner && freshPartner.state === 'chatting') {
               findMatchForUser(partner.telegram_id, partner.language || 'English').catch(e => logger.error(e));
             }
-            }
           } else {
+            // Transient error — log it but don't end the chat
+            logger.error(err, 'Message forwarding error (non-fatal)');
+            await ctx.reply(t('message_delivery_failed', lang));
+          }
+        }
+      } else {
             // Transient error — log it but don't end the chat
             logger.error(err, 'Message forwarding error (non-fatal)');
             await ctx.reply(t('message_delivery_failed', lang));
