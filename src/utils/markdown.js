@@ -1,11 +1,11 @@
 /**
- * Escape Markdown special characters to prevent parse errors.
- * Only escapes characters that are actually special in Telegram MarkdownV1.
+ * Escape MarkdownV2 special characters to prevent Telegram parse errors.
+ * MarkdownV2 requires escaping ALL of: _ * [ ] ( ) ~ ` > # + - = | { } . !
  * @param {string} text - The text to escape
- * @returns {string} Escaped text safe for Telegram Markdown parse mode
+ * @returns {string} Escaped text safe for Telegram MarkdownV2 parse mode
  */
 function escapeMarkdown(text) {
-  return text ? text.replace(/([_*\[\]()~`>#+\-=|{}\\])/g, '\\$1') : text;
+  return text ? text.replace(/([_*\[\]()~`>#+\-=|{}.!\\])/g, '\\$1') : text;
 }
 
 module.exports = { escapeMarkdown };

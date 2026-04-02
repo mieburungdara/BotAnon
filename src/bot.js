@@ -58,7 +58,7 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
       await ctx.reply(t('report_submitted', lang));
       await boundSendRating(ctx.from.id, ctx.session.reportedId, lang);
       if (repUser && repUser.report_count % 3 === 0) {
-        try { await ctx.telegram.sendMessage(repUser.telegram_id, t('auto_warn_message', repUser.language || 'English'), { parse_mode: 'Markdown' }); } catch (w) {}
+        try { await ctx.telegram.sendMessage(repUser.telegram_id, t('auto_warn_message', repUser.language || 'English'), { parse_mode: 'MarkdownV2' }); } catch (w) {}
       }
     }
   } catch (err) { logger.error(err, 'Submit report error'); }
@@ -141,14 +141,37 @@ async function startBot() {
     await housekeeping();
     const hkInterval = setInterval(housekeeping, 12 * 60 * 60 * 1000);
     
-    const server = http.createServer((req, res) => {
-      if (req.url === '/health') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime() }));
-      } else { res.writeHead(404); res.end(); }
+    // Rec #2: Enhanced health check with liveness and readiness probes
+    let botReady = false;
+    const server = http.createServer(async (req, res) => {
+      const headers = { 'Content-Type': 'application/json' };
+      if (req.url === '/health' || req.url === '/health/live') {
+        // Liveness: is the process alive?
+        res.writeHead(200, headers);
+        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), pid: process.pid }));
+      } else if (req.url === '/health/ready') {
+        // Readiness: is the bot connected and DB accessible?
+        try {
+          const dbCheck = await db.query('SELECT 1 as healthy');
+          const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0 && dbCheck.rows[0].healthy === 1;
+          if (dbHealthy && botReady) {
+            res.writeHead(200, headers);
+            res.end(JSON.stringify({ status: 'ready', db: 'connected', bot: 'launched' }));
+          } else {
+            res.writeHead(503, headers);
+            res.end(JSON.stringify({ status: 'not_ready', db: dbHealthy ? 'connected' : 'disconnected', bot: botReady ? 'launched' : 'pending' }));
+          }
+        } catch (err) {
+          res.writeHead(503, headers);
+          res.end(JSON.stringify({ status: 'not_ready', db: 'error', error: err.message }));
+        }
+      } else { res.writeHead(404, headers); res.end(JSON.stringify({ error: 'not_found' })); }
     });
     const hPort = process.env.PORT_HEALTH || (lCfg.webhook ? (lCfg.webhook.port + 1) : 3000);
     server.listen(hPort, () => logger.info(`Health check server running on port ${hPort}`));
+
+    // Mark bot as ready after successful launch
+    botReady = true;
 
     // FIX Bug #11: Clear housekeeping interval and await server close during shutdown
     const shutdown = async (signal) => {
