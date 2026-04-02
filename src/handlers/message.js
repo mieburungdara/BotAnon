@@ -37,7 +37,7 @@ function registerMessageHandler(bot, findMatchForUser) {
       else if (msg.video_note) { type = 'video_note'; fid = msg.video_note.file_id; }
       else if (msg.location) { type = 'location'; }
       else if (msg.contact) { type = 'contact'; }
-      
+
       await saveMessage(activeChat.id, tid, msg.text || msg.caption || null, type || 'text', fid);
       if (partner && partner.telegram_id) {
         try {
@@ -64,12 +64,6 @@ function registerMessageHandler(bot, findMatchForUser) {
               findMatchForUser(partner.telegram_id, partner.language || 'English').catch(e => logger.error(e));
             }
           } else {
-            // Transient error — log it but don't end the chat
-            logger.error(err, 'Message forwarding error (non-fatal)');
-            await ctx.reply(t('message_delivery_failed', lang));
-          }
-        }
-      } else {
             // Transient error — log it but don't end the chat
             logger.error(err, 'Message forwarding error (non-fatal)');
             await ctx.reply(t('message_delivery_failed', lang));
