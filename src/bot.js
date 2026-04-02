@@ -75,7 +75,8 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
   ctx.session.reportedId = null;
   ctx.session.reportChatId = null;
   ctx.session.reportReason = null;
-  await ctx.scene.leave();
+  // FIX Bug #47: ctx.scene.leave() may throw if scene already left (e.g., user typed a command)
+  try { await ctx.scene.leave(); } catch (e) { logger.warn(e, 'Failed to leave reportFlow scene'); }
 });
 
 const stage = new Scenes.Stage([profileSetup, reportFlow, settingsAgeScene]);
