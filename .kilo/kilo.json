@@ -1,0 +1,14 @@
+{
+  "$schema": "https://app.kilo.ai/config.json",
+  "mcp": {
+    "sqlite": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "mcp-server-sqlite",
+        "--db-path",
+        "/data/botanon.db"
+      ]
+    }
+  }
+}
