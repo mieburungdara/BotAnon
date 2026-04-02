@@ -2,6 +2,7 @@
  * Session Middleware — persistent session storage backed by the database.
  */
 const { db } = require('../database');
+const { t } = require('../locales');
 const logger = require('../utils/logger');
 
 function createSessionMiddleware() {
@@ -30,7 +31,7 @@ function createSessionMiddleware() {
     const lastTime = ctx.session.lastMsgTime || 0;
     if (lastTime && now - lastTime < 1000) {
       const lang = (ctx.session && ctx.session.language) || 'English';
-      try { await ctx.reply('⚠️ ' + (lang === 'Indonesian' ? 'Jangan terburu-buru!' : 'Please don\'t spam!')); } catch (e) {}
+      try { await ctx.reply('⚠️ ' + t('anti_spam_warning', lang)); } catch (e) {}
       return;
     }
     ctx.session.lastMsgTime = now;

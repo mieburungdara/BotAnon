@@ -58,7 +58,11 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
       await ctx.reply(t('report_submitted', lang));
       await boundSendRating(ctx.from.id, ctx.session.reportedId, lang);
       if (repUser && repUser.report_count % 3 === 0) {
-        try { await ctx.telegram.sendMessage(repUser.telegram_id, t('auto_warn_message', repUser.language || 'English'), { parse_mode: 'MarkdownV2' }); } catch (w) {}
+        try {
+          const { escapeMarkdown } = require('./utils/markdown');
+          const safeWarn = escapeMarkdown(t('auto_warn_message', repUser.language || 'English'));
+          await ctx.telegram.sendMessage(repUser.telegram_id, safeWarn, { parse_mode: 'MarkdownV2' });
+        } catch (w) {}
       }
     }
   } catch (err) { logger.error(err, 'Submit report error'); }
@@ -153,7 +157,7 @@ async function startBot() {
         // Readiness: is the bot connected and DB accessible?
         try {
           const dbCheck = await db.query('SELECT 1 as healthy');
-          const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0 && dbCheck.rows[0].healthy === 1;
+          const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0 && !!dbCheck.rows[0].healthy;
           if (dbHealthy && botReady) {
             res.writeHead(200, headers);
             res.end(JSON.stringify({ status: 'ready', db: 'connected', bot: 'launched' }));

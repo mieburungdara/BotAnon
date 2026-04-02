@@ -116,7 +116,8 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
     // Step 1: Notify the initiator (telegramId) about their partner
     try {
       const safeInfo1 = escapeMarkdown(info1);
-      await bot.telegram.sendMessage(telegramId, t('now_connected', userLang) + safeInfo1, { parse_mode: 'MarkdownV2' });
+      const safeConnected = escapeMarkdown(t('now_connected', userLang));
+      await bot.telegram.sendMessage(telegramId, safeConnected + safeInfo1, { parse_mode: 'MarkdownV2' });
     } catch (initiatorErr) {
       // Initiator blocked the bot right after matching!
       await endChat(chat.id);
@@ -133,7 +134,8 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
     // Step 2: Notify the partner (waitingUser) about the initiator
     try {
       const safeInfo2 = escapeMarkdown(info2);
-      await bot.telegram.sendMessage(waitingUser.telegram_id, t('now_connected', partnerLang) + safeInfo2, { parse_mode: 'MarkdownV2' });
+      const safeConnected = escapeMarkdown(t('now_connected', partnerLang));
+      await bot.telegram.sendMessage(waitingUser.telegram_id, safeConnected + safeInfo2, { parse_mode: 'MarkdownV2' });
     } catch (partnerErr) {
       // Partner blocked bot at the last second!
       await endChat(chat.id);

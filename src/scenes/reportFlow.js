@@ -47,15 +47,6 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
         }
       } catch (err) { logger.error(err, 'Report chat cleanup error'); }
     }
-        });
-        // FIX Bug #7: Move Telegram I/O outside the database transaction
-        if (partnerForRematch) {
-          try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
-          await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
-          findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch).catch(err => logger.error(err, 'findMatchForUser error'));
-        }
-      } catch (err) { logger.error(err, 'Report chat cleanup error'); }
-    }
     const text = t('report_details_prompt', lang);
     const markup = { inline_keyboard: [[{ text: t('btn_skip', lang), callback_data: 'skip_details' }]] };
     if (ctx.session.reportMsgId) {

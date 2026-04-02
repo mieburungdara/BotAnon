@@ -68,6 +68,7 @@ const locales = {
     cannot_rate_self: '❌ You cannot rate yourself!',
     unauthorized_rating: '❌ You can only rate people you have chatted with.',
     message_delivery_failed: '⚠️ Message delivery failed.',
+    anti_spam_warning: "Please don't spam!",
   },
   Indonesian: {
     please_enter_age: 'Mohon masukkan umur Anda:',
@@ -135,6 +136,7 @@ const locales = {
     cannot_rate_self: '❌ Anda tidak bisa menilai diri sendiri!',
     unauthorized_rating: '❌ Anda hanya bisa menilai orang yang pernah mengobrol dengan Anda.',
     message_delivery_failed: '⚠️ Pesan gagal dikirim.',
+    anti_spam_warning: 'Jangan terburu-buru!',
   },
   Spanish: {
     please_enter_age: 'Por favor ingrese su edad:',
@@ -202,6 +204,7 @@ const locales = {
     cannot_rate_self: '❌ ¡No puedes calificarte a ti mismo!',
     unauthorized_rating: '❌ Solo puedes calificar a personas con las que has chateado.',
     message_delivery_failed: '⚠️ Error en la entrega del mensaje.',
+    anti_spam_warning: '¡No hagas spam!',
   },
   French: {
     please_enter_age: 'Veuillez entrer votre âge :',
@@ -269,6 +272,7 @@ const locales = {
     cannot_rate_self: '❌ Vous ne pouvez pas vous noter vous-même !',
     unauthorized_rating: '❌ Vous ne pouvez noter que les personnes avec qui vous avez discuté.',
     message_delivery_failed: '⚠️ Échec de la livraison du message.',
+    anti_spam_warning: "Ne spammez pas !",
   },
   Arabic: {
     please_enter_age: 'الرجاء إدخال عمرك:',
@@ -336,6 +340,7 @@ const locales = {
     cannot_rate_self: '❌ لا يمكنك تقييم نفسك!',
     unauthorized_rating: '❌ يمكنك فقط تقييم الأشخاص الذين تحدثت معهم.',
     message_delivery_failed: '⚠️ فشل تسليم الرسالة.',
+    anti_spam_warning: 'من فضلك لا تكرر الرسائل!',
   }
 };
 
