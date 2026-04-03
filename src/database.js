@@ -107,10 +107,12 @@ function createSqliteAdapter() {
 
     /** Run a transaction (async for sqlite). */
     async transaction(fn) {
-      sqlite.exec('BEGIN IMMEDIATE');
+      let txActive = false;
       try {
-        // FIX Bug #7: Create a transaction-scoped query method that uses the same connection
-        // We pass the sqlite instance explicitly to ensure all queries run in the same transaction context
+        sqlite.exec('BEGIN IMMEDIATE');
+        txActive = true;
+        
+        // Transaction-scoped query method that uses the same connection
         const tx = {
           query: async (sql, params) => {
             // Convert pg-style $1, $2 to sqlite-style ? and expand params
@@ -167,11 +169,17 @@ function createSqliteAdapter() {
           }
         };
         const result = await fn(tx);
-        if (sqlite.inTransaction) sqlite.exec('COMMIT');
+        if (txActive && sqlite.inTransaction) sqlite.exec('COMMIT');
         return result;
       } catch (err) {
-        if (sqlite.inTransaction) sqlite.exec('ROLLBACK');
+        if (txActive && sqlite.inTransaction) sqlite.exec('ROLLBACK');
         throw err;
+      } finally {
+        // ✅ FINALLY GUARD: Jaminan 100% transaksi tidak akan pernah dibiarkan terbuka
+        // Ini akan selalu berjalan APAPUN yang terjadi: throw, return, break, dll
+        if (txActive && sqlite.inTransaction) {
+          try { sqlite.exec('ROLLBACK'); } catch (e) {}
+        }
       }
     }
   };
@@ -184,14 +192,22 @@ function createSqliteAdapter() {
  * @returns {string} The table name
  */
 function extractTableName(sql, type) {
+  const allowedTables = ['users', 'chats', 'messages', 'reports', 'ratings', 'sessions', 'bans'];
+  
+  let tableName = '';
   if (type === 'INSERT') {
     const match = sql.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i);
-    return match ? match[1] : '';
+    tableName = match ? match[1] : '';
   } else if (type === 'UPDATE') {
     const match = sql.match(/UPDATE\s+(\w+)/i);
-    return match ? match[1] : '';
+    tableName = match ? match[1] : '';
   }
-  return '';
+  
+  // ✅ WHITELIST PROTECTION: Hanya tabel yang diijinkan yang bisa diakses
+  if (allowedTables.includes(tableName.toLowerCase())) {
+    return tableName;
+  }
+  throw new Error(`Invalid table name: ${tableName}`);
 }
 
 /**

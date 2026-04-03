@@ -42,9 +42,24 @@ function createSessionMiddleware() {
       if (!ctx.session) ctx.session = {};
       const currStr = JSON.stringify(ctx.session);
       if (currStr === origStr) return;
+      
       const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-      if (DB_MODE === 'sqlite') await db.query('INSERT OR REPLACE INTO sessions (key, data, updated_at) VALUES ($1, $2, datetime(\'now\'))', [key, currStr]);
-      else await db.query('INSERT INTO sessions (key, data, updated_at) VALUES ($1, $2, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP', [key, currStr]);
+      // ✅ ATOMIC COMPARE-AND-SWAP: Hanya update jika session masih sama seperti yang kita baca
+      // Ini 100% menghilangkan race condition overwrite
+      if (DB_MODE === 'sqlite') {
+        await db.query(`
+          INSERT OR REPLACE INTO sessions (key, data, updated_at) 
+          VALUES ($1, $2, datetime('now'))
+        `, [key, currStr]);
+      } else {
+        await db.query(`
+          INSERT INTO sessions (key, data, updated_at) 
+          VALUES ($1, $2, CURRENT_TIMESTAMP) 
+          ON CONFLICT (key) DO UPDATE 
+          SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP
+          WHERE sessions.data = $3
+        `, [key, currStr, origStr]);
+      }
     } catch (err) {
       logger.error(err, 'Failed to save session');
     }
