@@ -34,14 +34,14 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
         // FIX Bug #7: Move Telegram I/O outside the database transaction
         await db.transaction(async (tx) => {
           await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [activeChat.id]);
-          await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['idle', tid.toString()]);
+          await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['idle', tid]);
           const pId = activeChat.user1_id === user.id ? activeChat.user2_id : activeChat.user1_id;
           const p = await getUserById(pId);
           if (p) {
             partnerLang = p.language || 'English';
             partnerTelegramId = p.telegram_id;
             partnerDbId = p.id;
-            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['waiting', p.telegram_id.toString()]);
+            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['waiting', p.telegram_id]);
           }
         });
         // FIX Bug #9: Re-queue partner for matching after /stop (consistent with /find and /next)
