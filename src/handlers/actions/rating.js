@@ -45,13 +45,6 @@ function registerRatingAction(bot) {
       ctx.session.processing = false;
     }
   });
-      await ctx.editMessageText(t('rate_recorded', lang));
-    } catch (err) {
-      logger.error(err, 'Rating error');
-    } finally {
-      ctx.session.processing = false;
-    }
-  });
 }
 
 module.exports = { registerRatingAction };
