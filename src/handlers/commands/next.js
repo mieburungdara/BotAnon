@@ -55,6 +55,11 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
           await sendRatingPrompt(tid, partnerDbId, lang);
         }
       } else {
+        if (user.state === 'waiting') {
+          await ctx.reply(t('now_waiting', lang));
+          if (ctx.session) ctx.session.processing = false;
+          return await findMatchForUser(tid, lang);
+        }
         await updateUserState(tid, 'waiting');
       }
       await ctx.reply(t('waiting_new_partner', lang));

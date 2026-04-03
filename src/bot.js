@@ -187,7 +187,7 @@ async function startBot() {
     const shutdown = async (signal) => {
       logger.info(`Received ${signal}. Shutting down gracefully...`);
       clearInterval(hkInterval);
-      bot.stop(signal);
+      try { await bot.stop(signal); } catch (e) { logger.warn(e, 'bot.stop() error during shutdown'); }
       if (db && db.close) await db.close();
       await new Promise(resolve => server.close(resolve));
       process.exit(0);

@@ -8,7 +8,7 @@ const { getUserByTelegramId } = require('../../services/userService');
 
 function registerRatingAction(bot) {
   bot.action(/^rate_(\d+)_(pos|neg)$/, async (ctx) => {
-    if (ctx.session.processing) return ctx.answerCbQuery();
+    if (!ctx.session || ctx.session.processing) { try { await ctx.answerCbQuery(); } catch(e) {} return; }
     ctx.session.processing = true;
     try {
       await ctx.answerCbQuery();
@@ -22,13 +22,15 @@ function registerRatingAction(bot) {
 
       if (user.id === ratedId) {
         ctx.session.processing = false;
-        return ctx.answerCbQuery(t('cannot_rate_self', lang), { show_alert: true });
+        try { await ctx.answerCbQuery(t('cannot_rate_self', lang), { show_alert: true }); } catch(e) {}
+        return;
       }
 
       const chatCheck = await db.query('SELECT id FROM chats WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1) LIMIT 1', [user.id, ratedId]);
       if (chatCheck.rows.length === 0) {
         ctx.session.processing = false;
-        return ctx.answerCbQuery(t('unauthorized_rating', lang), { show_alert: true });
+        try { await ctx.answerCbQuery(t('unauthorized_rating', lang), { show_alert: true }); } catch(e) {}
+        return;
       }
 
       await db.transaction(async (tx) => {
@@ -39,8 +41,16 @@ function registerRatingAction(bot) {
       await ctx.editMessageText(t('rate_recorded', lang));
     } catch (err) {
       logger.error(err, 'Rating error');
+    } finally {
+      ctx.session.processing = false;
     }
-    ctx.session.processing = false;
+  });
+      await ctx.editMessageText(t('rate_recorded', lang));
+    } catch (err) {
+      logger.error(err, 'Rating error');
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 }
 
