@@ -58,6 +58,10 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
         await ctx.reply(t('chat_ended', lang));
       } else if (user.state === 'waiting') {
         await updateUserState(tid, 'idle');
+        // ✅ FIX BUG #109: Hapus user dari antrian matchmaking saat menekan /stop
+        // Ini adalah bug legendaris yang tidak ditemukan selama 8 bulan
+        // User akan tetap mendapatkan partner meskipun sudah menekan /stop
+        await db.query('DELETE FROM matchmaking_queue WHERE user_id = $1', [user.id]);
         await ctx.reply(t('stopped_searching', lang));
       } else {
         await ctx.reply(t('not_searching', lang));

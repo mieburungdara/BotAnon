@@ -57,6 +57,8 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
       } else {
         if (user.state === 'waiting') {
           await ctx.reply(t('now_waiting', lang));
+          // ✅ Bersihkan antrian lama sebelum mulai pencarian baru
+          await db.query('DELETE FROM matchmaking_queue WHERE user_id = $1', [user.id]);
           return await findMatchForUser(tid, lang);
         }
         await updateUserState(tid, 'waiting');
