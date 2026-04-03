@@ -49,6 +49,8 @@ function extractEvidenceFromReply(replyToMessage) {
     else if (rm.location) { type = 'location'; }
     else if (rm.contact) { type = 'contact'; }
     ev = `[EVIDENCE] Type: ${type}${fid ? ' | FID: '+fid : ''}${content ? ' | Content: '+content : ''}`;
+    // FIX Bug #89: Don't return evidence string if there's no actual content
+    if (type === 'text' && !fid && !content) ev = '';
   }
   return ev;
 }
