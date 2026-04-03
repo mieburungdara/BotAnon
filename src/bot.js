@@ -64,6 +64,18 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
           await ctx.telegram.sendMessage(repUser.telegram_id, safeWarn, { parse_mode: 'MarkdownV2' });
         } catch (w) { logger.warn(w, 'Failed to send auto-warn message'); }
       }
+    } else {
+      // FIX Bug #90: Don't send rating prompt if report submission failed due to missing data
+      logger.warn({ userId: ctx.from.id, reportedId: ctx.session.reportedId }, 'Report submission skipped — missing user or reportedId');
+    }
+  } catch (err) {
+    logger.error(err, 'Submit report error');
+    const lang = ctx.session.language || 'English';
+    await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
+  }
+    } else {
+      // FIX Bug #90: Don't send rating prompt if report submission failed due to missing data
+      logger.warn({ userId: ctx.from.id, reportedId: ctx.session.reportedId }, 'Report submission skipped — missing user or reportedId');
     }
   } catch (err) {
     logger.error(err, 'Submit report error');
