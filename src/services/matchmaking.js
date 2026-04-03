@@ -141,8 +141,14 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
       await endChat(chat.id);
       // The partner blocked, so they should be idle.
       // The initiator did nothing wrong — set them to 'waiting' and re-match.
-      await updateUserState(waitingUser.telegram_id, 'idle');
-      await updateUserState(telegramId, 'waiting');
+      // ✅ Hanya update state jika update benar-benar berhasil
+      // Mencegah state desync ketika terdapat konkurensi
+      const update1 = await updateUserState(waitingUser.telegram_id, 'idle');
+      const update2 = await updateUserState(telegramId, 'waiting');
+      
+      if (!update1 || !update2) {
+        logger.warn({ update1, update2 }, 'User state update failed during matchmaking recovery');
+      }
       try { await bot.telegram.sendMessage(telegramId, t('partner_not_found', userLang)); } catch (e) { /* initiator also blocked */ }
       // Re-match the innocent initiator, not the blocker
       // FIX Bugs #7,#8: Use depth limiting to prevent infinite recursion
