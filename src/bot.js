@@ -165,7 +165,9 @@ async function startBot() {
     logger.info(lCfg.webhook ? 'Running using Webhooks.' : 'Running using Long Polling.');
 
     await housekeeping();
-    const hkInterval = setInterval(housekeeping, 12 * 60 * 60 * 1000);
+    const hkInterval = setInterval(() => {
+      housekeeping().catch(e => logger.error(e, 'Housekeeping job failed'));
+    }, 12 * 60 * 60 * 1000);
     
     // Rec #2: Enhanced health check with liveness and readiness probes
     let botReady = false;
