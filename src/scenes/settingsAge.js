@@ -18,9 +18,14 @@ function createSettingsAgeScene() {
     if (ctx.session.processing) return ctx.answerCbQuery();
     ctx.session.processing = true;
     try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
-    await ctx.editMessageText(t('setting_cancelled', ctx.session.language || 'English'));
-    ctx.session.processing = false;
-    await ctx.scene.leave();
+    try {
+      await ctx.editMessageText(t('setting_cancelled', ctx.session.language || 'English'));
+      await ctx.scene.leave();
+    } catch (err) {
+      logger.error(err, 'Failed to edit cancel message');
+    } finally {
+      ctx.session.processing = false;
+    }
   });
 
   settingsAgeScene.on('text', async (ctx) => {
