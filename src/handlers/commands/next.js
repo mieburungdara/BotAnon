@@ -22,7 +22,6 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
       const tid = ctx.from.id;
       const user = await getUserByTelegramId(tid);
       if (!user) {
-        if (ctx.session) ctx.session.processing = false;
         return ctx.reply(t('start_to_register', 'English'));
       }
       const lang = user.language || 'English';
@@ -58,7 +57,6 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
       } else {
         if (user.state === 'waiting') {
           await ctx.reply(t('now_waiting', lang));
-          if (ctx.session) ctx.session.processing = false;
           return await findMatchForUser(tid, lang);
         }
         await updateUserState(tid, 'waiting');
@@ -67,8 +65,9 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
       await findMatchForUser(tid, lang);
     } catch (err) {
       logger.error(err, 'Handler error /next');
+    } finally {
+      if (ctx.session) ctx.session.processing = false;
     }
-    if (ctx.session) ctx.session.processing = false;
   });
 }
 

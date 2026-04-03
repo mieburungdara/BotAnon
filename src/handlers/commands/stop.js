@@ -22,7 +22,6 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
       const tid = ctx.from.id;
       const user = await getUserByTelegramId(tid);
       if (!user) {
-        if (ctx.session) ctx.session.processing = false;
         return ctx.reply(t('start_to_register', 'English'));
       }
       const lang = user.language || 'English';
@@ -65,8 +64,11 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
       }
     } catch (err) {
       logger.error(err, 'Handler error /stop');
+    } finally {
+      // ✅ GUARANTEED processing flag reset: This will run 100% NO MATTER WHAT HAPPENS
+      // Even with early return, throw, crash, error, anything
+      if (ctx.session) ctx.session.processing = false;
     }
-    if (ctx.session) ctx.session.processing = false;
   });
 }
 
