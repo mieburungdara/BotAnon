@@ -19,17 +19,22 @@ function createSessionMiddleware() {
       if (!ctx.session) ctx.session = {};
     }
 
+    // ✅ Fix processing flag deadlock: Reset jika sudah lebih dari 5 detik (bukan 30 detik)
+    // Jika bot crash di tengah handler, user tidak akan terblokir 30 detik
     if (ctx.session.processing && ctx.session.lastMsgTime) {
       const age = Date.now() - ctx.session.lastMsgTime;
-      if (age > 30000) {
+      if (age > 5000) {
         ctx.session.processing = false;
+        logger.debug('Stale processing flag cleared automatically', { userId: ctx.from.id, age });
       }
     }
     
     // FIX Bug #10: Skip anti-spam check on first message (lastTime === 0 means brand new session)
     const now = Date.now();
     const lastTime = ctx.session.lastMsgTime || 0;
-    if (lastTime && now - lastTime < 1000) {
+    // ✅ Perbaiki rate limit: 300ms (bukan 1 detik) agar tidak memblokir user yang mengetik cepat
+    // 1 detik terlalu ketat dan user menganggap bot rusak
+    if (lastTime && now - lastTime < 300) {
       const lang = (ctx.session && ctx.session.language) || 'English';
       try { await ctx.reply('⚠️ ' + t('anti_spam_warning', lang)); } catch (e) {}
       return;
