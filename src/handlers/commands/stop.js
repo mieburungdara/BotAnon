@@ -56,9 +56,6 @@ function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
           // FIX Bug #86: Only send rating prompt to initiator if partner was found
           await sendRatingPrompt(tid, partnerDbId, lang);
         }
-          // FIX Bug #86: Only send rating prompt to initiator if partner was found
-          await sendRatingPrompt(tid, partnerDbId, lang);
-        }
         await ctx.reply(t('chat_ended', lang));
       } else if (user.state === 'waiting') {
         await updateUserState(tid, 'idle');
