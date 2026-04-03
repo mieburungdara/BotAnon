@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 
 async function getActiveChatByUserId(userId) {
   try {
-    const res = await db.query('SELECT * FROM chats WHERE (user1_id = $1 OR user2_id = $1) AND ended_at IS NULL AND is_active = TRUE', [userId]);
+    const res = await db.query('SELECT * FROM chats WHERE (user1_id = $1 OR user2_id = $1) AND user2_id IS NOT NULL AND ended_at IS NULL AND is_active = TRUE', [userId]);
     return res.rows[0];
   } catch (err) {
     logger.error(err, `Error in getActiveChatByUserId (${userId})`);

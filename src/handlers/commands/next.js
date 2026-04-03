@@ -52,6 +52,10 @@ function registerNextCommand(bot, findMatchForUser, sendRatingPrompt) {
             await sendRatingPrompt(partnerTelegramId, user.id, partnerLang);
             findMatchForUser(partnerTelegramId, partnerLang).catch(e => logger.error(e));
           }
+          // FIX Bug #86: Only send rating prompt to initiator if partner was found
+          await sendRatingPrompt(tid, partnerDbId, lang);
+        }
+          // FIX Bug #86: Only send rating prompt to initiator if partner was found
           await sendRatingPrompt(tid, partnerDbId, lang);
         }
       } else {

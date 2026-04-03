@@ -61,7 +61,7 @@ function registerMessageHandler(bot, findMatchForUser) {
             await ctx.reply(t('partner_not_found', lang));
             findMatchForUser(tid, lang).catch(e => logger.error(e));
             if (freshPartner && freshPartner.state === 'chatting') {
-              findMatchForUser(partner.telegram_id, partner.language || 'English').catch(e => logger.error(e));
+              findMatchForUser(freshPartner.telegram_id, freshPartner.language || 'English').catch(e => logger.error(e));
             }
           } else if (err.response && err.response.error_code === 429) {
             // Rate limited — don't bother the user, just log it
