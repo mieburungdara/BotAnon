@@ -169,10 +169,16 @@ function createSqliteAdapter() {
           }
         };
         const result = await fn(tx);
-        if (txActive && sqlite.inTransaction) sqlite.exec('COMMIT');
+        if (txActive && sqlite.inTransaction) {
+          sqlite.exec('COMMIT');
+          txActive = false; // ✅ Tandai transaksi sudah selesai, tidak perlu rollback lagi
+        }
         return result;
       } catch (err) {
-        if (txActive && sqlite.inTransaction) sqlite.exec('ROLLBACK');
+        if (txActive && sqlite.inTransaction) {
+          sqlite.exec('ROLLBACK');
+          txActive = false;
+        }
         throw err;
       } finally {
         // ✅ FINALLY GUARD: Jaminan 100% transaksi tidak akan pernah dibiarkan terbuka

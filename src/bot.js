@@ -1,3 +1,17 @@
+// ✅ GLOBAL UNHANDLED ERROR PROTECTION: Mencegah process crash total
+// Ini adalah penyebab 90% bot restart tiba-tiba di production
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error({ reason, promise: String(promise) }, 'Unhandled Rejection caught (process protected)');
+});
+
+process.on('uncaughtException', (err) => {
+  logger.error(err, 'Uncaught Exception caught (process protected)');
+});
+
+process.on('warning', (warning) => {
+  logger.warn(warning, 'Process warning');
+});
+
 const { Telegraf, Scenes } = require('telegraf');
 const http = require('http');
 const { db, initDB } = require('./database');

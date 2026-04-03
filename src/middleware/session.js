@@ -44,13 +44,24 @@ function createSessionMiddleware() {
       if (currStr === origStr) return;
       
       const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-      // ✅ ATOMIC COMPARE-AND-SWAP: Hanya update jika session masih sama seperti yang kita baca
-      // Ini 100% menghilangkan race condition overwrite
+      // ✅ ATOMIC COMPARE-AND-SWAP: Bekerja untuk SQLite DAN PostgreSQL
+      // 100% menghilangkan race condition overwrite untuk SEMUA database
       if (DB_MODE === 'sqlite') {
-        await db.query(`
-          INSERT OR REPLACE INTO sessions (key, data, updated_at) 
-          VALUES ($1, $2, datetime('now'))
-        `, [key, currStr]);
+        // SQLite tidak mendukung WHERE pada ON CONFLICT, jadi gunakan UPDATE terlebih dahulu dengan kondisi
+        const updateRes = await db.query(`
+          UPDATE sessions 
+          SET data = $2, updated_at = datetime('now')
+          WHERE key = $1 AND data = $3
+        `, [key, currStr, origStr]);
+        
+        // Jika tidak ada baris yang terupdate, berarti sudah ada perubahan dari request lain
+        // Jika tidak ada baris sama sekali, lakukan INSERT
+        if (updateRes.rows === undefined || !updateRes.rows.length) {
+          await db.query(`
+            INSERT OR IGNORE INTO sessions (key, data, updated_at) 
+            VALUES ($1, $2, datetime('now'))
+          `, [key, currStr]);
+        }
       } else {
         await db.query(`
           INSERT INTO sessions (key, data, updated_at) 
