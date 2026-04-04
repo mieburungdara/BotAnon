@@ -1,5 +1,8 @@
+// ✅ Load environment variables before ANY other module to ensure consistency
+require('dotenv').config();
+
 // ✅ GLOBAL UNHANDLED ERROR PROTECTION: Mencegah process crash total
-// Ini adalah penyebab 90% bot restart tiba-tiba di production
+const logger = require('./utils/logger');
 process.on('unhandledRejection', (reason, promise) => {
   logger.error({ reason, promise: String(promise) }, 'Unhandled Rejection caught (process protected)');
 });
@@ -8,16 +11,10 @@ process.on('uncaughtException', (err) => {
   logger.error(err, 'Uncaught Exception caught (process protected)');
 });
 
-process.on('warning', (warning) => {
-  logger.warn(warning, 'Process warning');
-});
-
 const { Telegraf, Scenes } = require('telegraf');
 const http = require('http');
 const { db, initDB } = require('./database');
 const { t } = require('./locales');
-const logger = require('./utils/logger');
-require('dotenv').config();
 
 if (!process.env.BOT_TOKEN) {
   logger.fatal('CRITICAL ERROR: BOT_TOKEN is not defined in .env file!');
@@ -44,7 +41,6 @@ const { registerStartCommand } = require('./handlers/commands/start');
 const { registerSettingsCommand } = require('./handlers/commands/settings');
 const { registerFindCommand } = require('./handlers/commands/find');
 const { registerReportCommand } = require('./handlers/commands/report');
-const { registerNextCommand } = require('./handlers/commands/next');
 const { registerStopCommand } = require('./handlers/commands/stop');
 const { registerSettingsActions } = require('./handlers/actions/settings');
 const { registerRatingAction } = require('./handlers/actions/rating');
@@ -108,7 +104,6 @@ registerStartCommand(bot, boundFindMatch);
 registerSettingsCommand(bot);
 registerFindCommand(bot, boundFindMatch, boundSendRating);
 registerReportCommand(bot);
-registerNextCommand(bot, boundFindMatch, boundSendRating);
 registerStopCommand(bot, boundSendRating, boundFindMatch);
 
 // Register actions
@@ -165,8 +160,12 @@ async function startBot() {
     logger.info(lCfg.webhook ? 'Running using Webhooks.' : 'Running using Long Polling.');
 
     await housekeeping();
-    const hkInterval = setInterval(() => {
-      housekeeping().catch(e => logger.error(e, 'Housekeeping job failed'));
+    const hkInterval = setInterval(async () => {
+      try {
+        await housekeeping();
+      } catch (e) {
+        logger.error(e, 'Housekeeping job failed');
+      }
     }, 12 * 60 * 60 * 1000);
     
     // Rec #2: Enhanced health check with liveness and readiness probes

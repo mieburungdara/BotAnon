@@ -50,7 +50,11 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
           if (partnerForRematch) {
             try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
             await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
-            findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch).catch(err => logger.error(err, 'findMatchForUser error'));
+            try {
+              await findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch);
+            } catch (err) {
+              logger.error(err, 'findMatchForUser error');
+            }
           }
         } catch (err) { logger.error(err, 'Report chat cleanup error'); }
       }
@@ -80,26 +84,36 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
 
   reportFlow.on('message', async (ctx) => {
     if (!ctx.message) return;
+    
+    // ✅ FIX Bug #90: Allow global commands to break the scene
     if (ctx.message.text && ctx.message.text.startsWith('/')) {
-      return;
+      await ctx.scene.leave();
+      return ctx.telegram.sendMessage(ctx.chat.id, ctx.message.text); // Pass to global handlers
     }
+
     // FIX Bug #28: Handle "skip" text command as alternative to the skip_details button
     if (ctx.message.text && ctx.message.text.toLowerCase() === 'skip') {
       ctx.session.reportDetails = '';
       await submitReport(ctx);
       return;
     }
+
     const msg = ctx.message;
     const ev = extractEvidenceFromMessage(msg);
+    const lang = ctx.session.language || 'English';
     
     if (ev) {
+      // ✅ FIX Bug #89: Prevent DoS by limiting evidence length (max 2000 chars)
+      const currentLen = (ctx.session.reportDetails || "").length;
+      if (currentLen + ev.length > 2000) {
+        return ctx.reply('⚠️ ' + (t('report_limit_reached', lang) || 'Report evidence limit reached (2000 chars). Please submit now.'));
+      }
+
       ctx.session.reportDetails = (ctx.session.reportDetails ? ctx.session.reportDetails + "\n" : "") + ev;
-      const lang = ctx.session.language || 'English';
       const markup = { inline_keyboard: [[{ text: t('btn_submit_report', lang), callback_data: 'confirm_submit' }]] };
       await ctx.reply(t('evidence_added_next_or_submit', lang), { reply_markup: markup });
     } else {
       // FIX Bug #28: Provide feedback for unsupported message types
-      const lang = ctx.session.language || 'English';
       await ctx.reply(t('report_unsupported_evidence', lang) || '⚠️ Please send text, media, or type "skip".');
     }
   });

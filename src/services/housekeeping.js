@@ -5,29 +5,51 @@ const { db } = require('../database');
 const logger = require('../utils/logger');
 
 async function housekeeping() {
+  const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
+  
   try {
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const sqlSess = DB_MODE === 'sqlite' 
-      ? "DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')"
-      : "DELETE FROM sessions WHERE updated_at < CURRENT_TIMESTAMP - INTERVAL '30 days'";
-    await db.query(sqlSess);
+    // ✅ FIX Bug #102: Batch Deletion for Messages (Max 1000 per batch)
+    // Prevents database locking on SQLite and vacuum bloat on PG
+    let deletedMsgs = 0;
+    const msgCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-7 days')" : "CURRENT_TIMESTAMP - INTERVAL '7 days'";
+    while (true) {
+      const res = await db.query(`DELETE FROM messages WHERE id IN (SELECT id FROM messages WHERE sent_at < ${msgCutoff} LIMIT 1000)`);
+      // SQLite return changes in res.changes, PG in res.rowCount
+      const count = res.changes || res.rowCount || 0;
+      if (count === 0) break;
+      deletedMsgs += count;
+      // Yield to event loop for 10ms to keep bot responsive
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
 
-    const sqlMsgs = DB_MODE === 'sqlite'
-      ? "DELETE FROM messages WHERE sent_at < datetime('now', '-7 days')"
-      : "DELETE FROM messages WHERE sent_at < CURRENT_TIMESTAMP - INTERVAL '7 days'";
-    await db.query(sqlMsgs);
+    // ✅ Batch Deletion for Sessions (Max 200 per batch)
+    const sessCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-30 days')" : "CURRENT_TIMESTAMP - INTERVAL '30 days'";
+    while (true) {
+      const res = await db.query(`DELETE FROM sessions WHERE key IN (SELECT key FROM sessions WHERE updated_at < ${sessCutoff} LIMIT 200)`);
+      const count = res.changes || res.rowCount || 0;
+      if (count === 0) break;
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
 
-    const closeZombiesSql = DB_MODE === 'sqlite'
-      ? "UPDATE chats SET ended_at = datetime('now'), is_active = FALSE WHERE is_active = TRUE AND started_at < datetime('now', '-1 day')"
-      : "UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE is_active = TRUE AND started_at < CURRENT_TIMESTAMP - INTERVAL '24 hours'";
-    await db.query(closeZombiesSql);
+    // ✅ FIX Bug #103: Efficient Zombie Chat Cleanup
+    // Close chats older than 24 hours
+    const zombieCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-1 day')" : "CURRENT_TIMESTAMP - INTERVAL '24 hours'";
+    await db.query(`UPDATE chats SET ended_at = ${DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP"}, is_active = FALSE WHERE is_active = TRUE AND started_at < ${zombieCutoff}`);
 
-    const resetStatesSql = DB_MODE === 'sqlite'
-      ? "UPDATE users SET state = 'waiting', updated_at = datetime('now') WHERE state = 'chatting' AND id IN (SELECT user1_id FROM chats WHERE is_active = FALSE AND started_at < datetime('now', '-1 day') UNION SELECT user2_id FROM chats WHERE is_active = FALSE AND started_at < datetime('now', '-1 day'))"
-      : "UPDATE users SET state = 'waiting', updated_at = CURRENT_TIMESTAMP WHERE state = 'chatting' AND id IN (SELECT user1_id FROM chats WHERE is_active = FALSE AND started_at < CURRENT_TIMESTAMP - INTERVAL '24 hours' UNION SELECT user2_id FROM chats WHERE is_active = FALSE AND started_at < CURRENT_TIMESTAMP - INTERVAL '24 hours')";
-    await db.query(resetStatesSql);
-
-    logger.info('Housekeeping: Old data cleaned and zombie chats closed.');
+    // Reset user states if they are stuck in 'chatting' for an inactive chat
+    const resetSql = `
+      UPDATE users SET state = 'idle', updated_at = ${DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP"} 
+      WHERE state = 'chatting' AND telegram_id IN (
+        SELECT user1_telegram_id FROM chats WHERE is_active = FALSE AND started_at < ${zombieCutoff}
+        UNION
+        SELECT user2_telegram_id FROM chats WHERE is_active = FALSE AND started_at < ${zombieCutoff}
+      )
+    `;
+    await db.query(resetSql);
+    // Sync states just in case
+    await db.query("UPDATE users SET state = 'idle' WHERE state = 'waiting' AND waiting_at IS NULL");
+    
+    logger.info({ deletedMsgs }, 'Housekeeping: Performance-optimized cleanup completed.');
   } catch (err) {
     logger.error(err, 'Housekeeping failed');
   }

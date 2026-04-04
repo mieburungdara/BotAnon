@@ -25,6 +25,8 @@ function registerSettingsCommand(bot) {
       ctx.session.settingsMsgId = msg.message_id;
     } catch (err) {
       require('../../utils/logger').error(err, 'Handler error /settings');
+    } finally {
+      if (ctx.session) ctx.session.processing = false;
     }
   });
 }

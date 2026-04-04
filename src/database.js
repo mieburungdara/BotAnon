@@ -4,7 +4,8 @@ require('dotenv').config();
 const logger = require('./utils/logger');
 
 
-const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
+const DB_MODE = (process.env.DB_MODE || 'sqlite').trim().toLowerCase();
+const isPostgres = DB_MODE === 'postgresql' || DB_MODE === 'postgres';
 
 let db;
 
@@ -18,202 +19,152 @@ function createSqliteAdapter() {
     fs.mkdirSync(dataDir, { recursive: true });
   }
   const dbPath = path.join(dataDir, 'botanon.db');
-  const sqlite = new Database(dbPath);
+  // ✅ FIX Bug #71: Enable safeIntegers to prevent precision loss for large Telegram IDs
+  const sqlite = new Database(dbPath, { safeIntegers: true });
 
   // Enable WAL mode for better concurrent performance
   sqlite.pragma('journal_mode = WAL');
   sqlite.pragma('foreign_keys = ON');
   sqlite.pragma('busy_timeout = 5000');
 
-  return {
+  const adapter = {
     /**
      * Execute a SQL query with pg-style $1, $2 placeholders.
-     * @param {string} sql - SQL query with $1, $2... placeholders
-     * @param {Array} params - Query parameters
-     * @returns {{ rows: Array<object> }} pg-compatible result
      */
     query(sql, params = []) {
-      // Convert pg-style $1, $2 to sqlite-style ? and expand params
-      // to handle reused placeholders (e.g. $1 used twice)
       const expandedParams = [];
-      const convertedSql = sql.replace(/\$(\d+)/g, (_, num) => {
-        expandedParams.push(params[parseInt(num, 10) - 1]);
+      const sqlWithoutQuotes = sql.replace(/'[^']*'/g, '___');
+      
+      // ✅ FIX Bug #131: Use Regex to find $n while ignoring quoted strings
+      // We process the string to extract params in order of appearance
+      const convertedSql = sql.replace(/(['"].*?['"])|(\$\d+)/g, (match, quote, placeholder) => {
+        if (quote) return quote;
+        const pIdx = parseInt(placeholder.substring(1), 10);
+        expandedParams.push(params[pIdx - 1]);
         return '?';
       });
 
-      // Determine query type
       const trimmed = convertedSql.trim().toUpperCase();
 
-      if (trimmed.startsWith('SELECT')) {
+      // ✅ FIX Bug #134: Support PRAGMA and other data-returning queries
+      if (trimmed.startsWith('SELECT') || trimmed.startsWith('PRAGMA')) {
         const stmt = sqlite.prepare(convertedSql);
         const rows = stmt.all(...expandedParams);
         return { rows };
-      } else if (trimmed.startsWith('INSERT') && convertedSql.toUpperCase().includes('RETURNING')) {
-        // Handle RETURNING clause — SQLite doesn't support it natively
-        // FIX Bug #8: More robust regex that handles various RETURNING patterns
-        const withoutReturning = convertedSql.replace(/\s+RETURNING\s+(?:\*|\w+(?:\s*,\s*\w+)*)/i, '');
-        const stmt = sqlite.prepare(withoutReturning);
-        const info = stmt.run(...expandedParams);
-        // If INSERT was ignored (e.g. INSERT OR IGNORE conflict), return empty rows
-        if (info.changes === 0) return { rows: [] };
-        // Fetch the inserted row
-        const tableName = extractTableName(convertedSql, 'INSERT');
-        const row = sqlite.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
-        return { rows: row ? [row] : [] };
-      } else if (trimmed.startsWith('UPDATE') && convertedSql.toUpperCase().includes('RETURNING')) {
-        // Handle UPDATE ... RETURNING *
-        // FIX Bug #8: More robust regex that handles various RETURNING patterns
-        const withoutReturning = convertedSql.replace(/\s+RETURNING\s+(?:\*|\w+(?:\s*,\s*\w+)*)/i, '');
-        const stmt = sqlite.prepare(withoutReturning);
-        stmt.run(...expandedParams);
+      } 
+      
+      const hasReturning = sql.toUpperCase().includes('RETURNING');
+      if (hasReturning) {
+        const type = trimmed.startsWith('INSERT') ? 'INSERT' : 'UPDATE';
+        // Remove RETURNING clause for the execution phase
+        const withoutReturningSql = convertedSql.replace(/\s+RETURNING\s.*$/is, '');
         
-        // Fetch the updated row using the WHERE clause condition
-        const tableName = extractTableName(convertedSql, 'UPDATE');
-        // Match the first column=value pattern in WHERE clause to find the unique key
-        // FIX Bug #46: Use regex to find the first WHERE clause (not inside subqueries)
-        const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/is);
-        if (whereMatch) {
-          const conditions = whereMatch[1];
-          // Count placeholders before the first WHERE by finding its position
-          const firstWhereIdx = convertedSql.search(/WHERE\s/i);
-          const beforeWhere = firstWhereIdx >= 0 ? convertedSql.substring(0, firstWhereIdx) : '';
-          const placeholdersBeforeWhere = (beforeWhere.match(/\?/g) || []).length;
+        try {
+          const stmt = sqlite.prepare(withoutReturningSql);
+          const info = stmt.run(...expandedParams);
           
-          const colMatches = [...conditions.matchAll(/(\w+)\s*=\s*\?/g)];
-          if (colMatches.length > 0) {
-            const whereParts = [];
-            const whereParams = [];
-            colMatches.forEach((m, i) => {
-              whereParts.push(`${m[1]} = ?`);
-              whereParams.push(expandedParams[placeholdersBeforeWhere + i]);
-            });
-            const row = sqlite.prepare(`SELECT * FROM ${tableName} WHERE ${whereParts.join(' AND ')}`).get(...whereParams);
+          if (info.changes === 0 && type === 'UPDATE') return { rows: [] };
+          
+          const tableName = extractTableName(sql, type);
+          
+          if (type === 'INSERT') {
+            const row = sqlite.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
             return { rows: row ? [row] : [] };
+          } else {
+            // ✅ FIX: Capture rows BEFORE update to handle changed WHERE conditions (e.g. is_active=TRUE -> FALSE)
+            const whereMatch = sql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/is);
+            let rowsBefore = [];
+            if (whereMatch) {
+              const rawWhere = whereMatch[1];
+              const whereParams = [];
+              const cleanWhere = rawWhere.replace(/(['"].*?['"])|(\$\d+)/g, (m, q, p) => {
+                if (q) return q;
+                const pIdx = parseInt(p.substring(1), 10);
+                whereParams.push(params[pIdx - 1]);
+                return '?';
+              });
+              rowsBefore = sqlite.prepare(`SELECT * FROM ${tableName} WHERE ${cleanWhere}`).all(...whereParams);
+            }
+
+            // Now perform the ACTUAL update
+            const stmt = sqlite.prepare(withoutReturningSql);
+            const info = stmt.run(...expandedParams);
+            
+            if (info.changes === 0) return { rows: [] };
+            
+            // Return what we captured before update (or re-fetch if precise id is certain)
+            return { rows: rowsBefore };
           }
+        } catch (runErr) {
+          logger.error({ sql: withoutReturningSql, paramsCount: expandedParams.length, err: runErr.message }, 'SQLite execution failed');
+          throw runErr;
         }
-        return { rows: [] };
-      } else {
-        // CREATE TABLE, generic INSERT/UPDATE/DELETE without RETURNING
+      }
+
+      // Generic non-returning query
+      try {
         const stmt = sqlite.prepare(convertedSql);
-        stmt.run(...expandedParams);
-        return { rows: [] };
+        const info = stmt.run(...expandedParams);
+        return { rows: [], changes: info.changes };
+      } catch (runErr) {
+        logger.error({ sql: convertedSql, paramsCount: expandedParams.length, err: runErr.message }, 'SQLite generic query failed');
+        throw runErr;
       }
     },
 
-    /** Close the SQLite connection. */
+    /**
+     * ✅ FIX Bug #67: Added queryOne for API consistency with PG adapter
+     */
+    async queryOne(sql, params = []) {
+      const res = this.query(sql, params);
+      return res.rows[0];
+    },
+
     close() {
       sqlite.close();
     },
 
-    /** Run a transaction (async for sqlite). */
     async transaction(fn) {
       let txActive = false;
       try {
         sqlite.exec('BEGIN IMMEDIATE');
         txActive = true;
-        
-        // Transaction-scoped query method that uses the same connection
         const tx = {
-          query: async (sql, params) => {
-            // Convert pg-style $1, $2 to sqlite-style ? and expand params
-            const expandedParams = [];
-            const convertedSql = sql.replace(/\$(\d+)/g, (_, num) => {
-              expandedParams.push(params[parseInt(num, 10) - 1]);
-              return '?';
-            });
-
-            const trimmed = convertedSql.trim().toUpperCase();
-
-            if (trimmed.startsWith('SELECT')) {
-              const stmt = sqlite.prepare(convertedSql);
-              const rows = stmt.all(...expandedParams);
-              return { rows };
-            } else if (trimmed.startsWith('INSERT') && convertedSql.toUpperCase().includes('RETURNING')) {
-              const withoutReturning = convertedSql.replace(/\s+RETURNING\s+(?:\*|\w+(?:\s*,\s*\w+)*)/i, '');
-              const stmt = sqlite.prepare(withoutReturning);
-              const info = stmt.run(...expandedParams);
-              if (info.changes === 0) return { rows: [] };
-              const tableName = extractTableName(convertedSql, 'INSERT');
-              const row = sqlite.prepare(`SELECT * FROM ${tableName} WHERE id = ?`).get(info.lastInsertRowid);
-              return { rows: row ? [row] : [] };
-            } else if (trimmed.startsWith('UPDATE') && convertedSql.toUpperCase().includes('RETURNING')) {
-              const withoutReturning = convertedSql.replace(/\s+RETURNING\s+(?:\*|\w+(?:\s*,\s*\w+)*)/i, '');
-              const stmt = sqlite.prepare(withoutReturning);
-              stmt.run(...expandedParams);
-              const tableName = extractTableName(convertedSql, 'UPDATE');
-              // FIX Bug #46: Use regex to find the first WHERE clause (not inside subqueries)
-              const whereMatch = convertedSql.match(/WHERE\s+(.+?)(?:\s+RETURNING|\s*$)/is);
-              if (whereMatch) {
-                const conditions = whereMatch[1];
-                const firstWhereIdx = convertedSql.search(/WHERE\s/i);
-                const beforeWhere = firstWhereIdx >= 0 ? convertedSql.substring(0, firstWhereIdx) : '';
-                const placeholdersBeforeWhere = (beforeWhere.match(/\?/g) || []).length;
-                const colMatches = [...conditions.matchAll(/(\w+)\s*=\s*\?/g)];
-                if (colMatches.length > 0) {
-                  const whereParts = [];
-                  const whereParams = [];
-                  colMatches.forEach((m, i) => {
-                    whereParts.push(`${m[1]} = ?`);
-                    whereParams.push(expandedParams[placeholdersBeforeWhere + i]);
-                  });
-                  const row = sqlite.prepare(`SELECT * FROM ${tableName} WHERE ${whereParts.join(' AND ')}`).get(...whereParams);
-                  return { rows: row ? [row] : [] };
-                }
-              }
-              return { rows: [] };
-            } else {
-              const stmt = sqlite.prepare(convertedSql);
-              stmt.run(...expandedParams);
-              return { rows: [] };
-            }
-          }
+          query: async (sql, params) => adapter.query(sql, params)
         };
         const result = await fn(tx);
-        if (txActive && sqlite.inTransaction) {
-          sqlite.exec('COMMIT');
-          txActive = false; // ✅ Tandai transaksi sudah selesai, tidak perlu rollback lagi
-        }
+        sqlite.exec('COMMIT');
+        txActive = false;
         return result;
       } catch (err) {
-        if (txActive && sqlite.inTransaction) {
-          sqlite.exec('ROLLBACK');
-          txActive = false;
-        }
+        if (txActive) sqlite.exec('ROLLBACK');
         throw err;
-      } finally {
-        // ✅ FINALLY GUARD: Jaminan 100% transaksi tidak akan pernah dibiarkan terbuka
-        // Ini akan selalu berjalan APAPUN yang terjadi: throw, return, break, dll
-        if (txActive && sqlite.inTransaction) {
-          try { sqlite.exec('ROLLBACK'); } catch (e) {}
-        }
       }
     }
   };
+  return adapter;
 }
 
 /**
  * Extract table name from an INSERT or UPDATE SQL statement.
- * @param {string} sql - The SQL statement
- * @param {string} type - 'INSERT' or 'UPDATE'
- * @returns {string} The table name
  */
 function extractTableName(sql, type) {
-  const allowedTables = ['users', 'chats', 'messages', 'reports', 'ratings', 'sessions', 'bans'];
+  const allowedTables = ['users', 'chats', 'messages', 'reports', 'reputations', 'sessions'];
   
+  // ✅ FIX Bug #62: Improved regex to handle quotes and various formatting
   let tableName = '';
   if (type === 'INSERT') {
-    const match = sql.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+(\w+)/i);
+    const match = sql.match(/INSERT\s+(?:OR\s+\w+\s+)?INTO\s+["']?(\w+)["']?/i);
     tableName = match ? match[1] : '';
   } else if (type === 'UPDATE') {
-    const match = sql.match(/UPDATE\s+(\w+)/i);
+    const match = sql.match(/UPDATE\s+["']?(\w+)["']?/i);
     tableName = match ? match[1] : '';
   }
   
-  // ✅ WHITELIST PROTECTION: Hanya tabel yang diijinkan yang bisa diakses
   if (allowedTables.includes(tableName.toLowerCase())) {
     return tableName;
   }
-  throw new Error(`Invalid table name: ${tableName}`);
+  throw new Error(`Invalid or unauthorized table name: ${tableName}`);
 }
 
 /**
@@ -298,6 +249,7 @@ async function initDB() {
           language VARCHAR(10),
           role TEXT DEFAULT 'user',
           state VARCHAR(20) DEFAULT 'idle',
+          waiting_at TEXT,
           created_at TEXT DEFAULT (datetime('now')),
           updated_at TEXT DEFAULT (datetime('now'))
         )
@@ -306,49 +258,13 @@ async function initDB() {
       await db.query(`
         CREATE TABLE IF NOT EXISTS chats (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user1_id INTEGER REFERENCES users(id),
-          user2_id INTEGER REFERENCES users(id),
+          user1_telegram_id BIGINT NOT NULL,
+          user2_telegram_id BIGINT NOT NULL,
           started_at TEXT DEFAULT (datetime('now')),
           ended_at TEXT,
           is_active BOOLEAN DEFAULT TRUE
         )
       `);
-
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS messages (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          chat_id INTEGER REFERENCES chats(id),
-          sender_telegram_id BIGINT,
-          content TEXT,
-          media_type TEXT,
-          media_file_id TEXT,
-          sent_at TEXT DEFAULT (datetime('now'))
-        )
-      `);
-
-      // Create reports table for SQLite
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS reports (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          reporter_id INTEGER REFERENCES users(id),
-          reported_id INTEGER REFERENCES users(id),
-          reason TEXT NOT NULL,
-          details TEXT,
-          created_at TEXT DEFAULT (datetime('now'))
-        )
-      `);
-
-       // Create reputations table for SQLite
-       await db.query(`
-         CREATE TABLE IF NOT EXISTS reputations (
-           id INTEGER PRIMARY KEY AUTOINCREMENT,
-           rater_id INTEGER REFERENCES users(id),
-           rated_id INTEGER REFERENCES users(id),
-           score INTEGER NOT NULL,
-           created_at TEXT DEFAULT (datetime('now')),
-           UNIQUE(rater_id, rated_id)
-         )
-       `);
 
       await db.query(`
         CREATE TABLE IF NOT EXISTS sessions (
@@ -358,31 +274,61 @@ async function initDB() {
         )
       `);
 
-      // Add report_count columns safely if they don't exist
-      const cols = ['report_count', 'report_spam_count', 'report_harassment_count', 'report_inappropriate_count', 'report_other_count'];
-      for (const col of cols) {
-        try {
-          await db.query(`ALTER TABLE users ADD COLUMN ${col} INTEGER DEFAULT 0`);
-        } catch (e) {
-          // Column likely already exists, ignore
+      // ✅ CLEAN MIGRATION: Check columns before adding them to avoid noisy Error logs
+      const userCols = await db.query("PRAGMA table_info(users)");
+      const existingUserCols = userCols.rows.map(c => c.name.toLowerCase());
+      
+      const reportCols = ['report_count', 'report_spam_count', 'report_harassment_count', 'report_inappropriate_count', 'report_other_count', 'waiting_at'];
+      for (const col of reportCols) {
+        if (!existingUserCols.includes(col.toLowerCase())) {
+          const typeArr = col === 'waiting_at' ? 'TEXT' : 'INTEGER DEFAULT 0';
+          await db.query(`ALTER TABLE users ADD COLUMN ${col} ${typeArr}`);
         }
       }
+      
+      // ✅ DROP Legacy Table
+      await db.query(`DROP TABLE IF EXISTS matchmaking_queue`);
+      
+      // Migrate chats table (BIGINT Telegram IDs)
+      const chatCols = await db.query("PRAGMA table_info(chats)");
+      const existingChatCols = chatCols.rows.map(c => c.name.toLowerCase());
+      
+      if (!existingChatCols.includes('user1_telegram_id')) {
+        await db.query(`ALTER TABLE chats ADD COLUMN user1_telegram_id BIGINT`);
+      }
+      if (!existingChatCols.includes('user2_telegram_id')) {
+        await db.query(`ALTER TABLE chats ADD COLUMN user2_telegram_id BIGINT`);
+      }
+      
+      // Data migration for old chats (Hanya jika kolom lama ada dan kolom baru kosong)
+      const hasOldUserCols = existingChatCols.includes('user1_id') || existingChatCols.includes('user2_id');
+      if (hasOldUserCols) {
+         await db.query(`
+           UPDATE chats 
+           SET 
+             user1_telegram_id = (SELECT telegram_id FROM users WHERE id = user1_id),
+             user2_telegram_id = (SELECT telegram_id FROM users WHERE id = user2_id)
+           WHERE user1_telegram_id IS NULL OR user2_telegram_id IS NULL
+         `);
+      }
 
-      // FIX Bug #9: Removed redundant ALTER TABLE for zodiac and role columns
-      // These columns are already defined in the CREATE TABLE statement above (lines 217, 219)
-      // Adding them again via ALTER TABLE is wasteful and confusing, even with try/catch.
-
-      // Add new columns to messages (SQLite way)
-      try {
+      // Add missing columns to messages table
+      const msgCols = await db.query("PRAGMA table_info(messages)");
+      const existingMsgCols = msgCols.rows.map(c => c.name.toLowerCase());
+      
+      if (!existingMsgCols.includes('media_type')) {
         await db.query(`ALTER TABLE messages ADD COLUMN media_type TEXT`);
+      }
+      if (!existingMsgCols.includes('media_file_id')) {
         await db.query(`ALTER TABLE messages ADD COLUMN media_file_id TEXT`);
-      } catch(e) {}
+      }
       
       // Add Indexes for SQLite
       await db.query(`CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)`);
-      await db.query(`CREATE INDEX IF NOT EXISTS idx_chats_users ON chats(user1_id, user2_id)`);
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_chats_users ON chats(user1_telegram_id, user2_telegram_id)`);
       await db.query(`CREATE INDEX IF NOT EXISTS idx_reports_reported ON reports(reported_id)`);
       await db.query(`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at)`);
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_users_waiting ON users(state, language, waiting_at)`);
     } else {
       // PostgreSQL schema (original)
       await db.query(`
@@ -398,6 +344,7 @@ async function initDB() {
           language VARCHAR(10),
           role VARCHAR(20) DEFAULT 'user',
           state VARCHAR(20) DEFAULT 'idle',
+          waiting_at TIMESTAMP WITH TIME ZONE,
           created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
@@ -406,8 +353,8 @@ async function initDB() {
       await db.query(`
         CREATE TABLE IF NOT EXISTS chats (
           id SERIAL PRIMARY KEY,
-          user1_id INTEGER REFERENCES users(id),
-          user2_id INTEGER REFERENCES users(id),
+          user1_telegram_id BIGINT NOT NULL,
+          user2_telegram_id BIGINT NOT NULL,
           started_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
           ended_at TIMESTAMP WITH TIME ZONE,
           is_active BOOLEAN DEFAULT TRUE
@@ -417,7 +364,7 @@ async function initDB() {
       await db.query(`
       CREATE TABLE IF NOT EXISTS messages (
         id SERIAL PRIMARY KEY,
-        chat_id INTEGER REFERENCES chats(id),
+        chat_id INTEGER REFERENCES chats(id) ON DELETE CASCADE,
         sender_telegram_id BIGINT,
         content TEXT,
         media_type VARCHAR(50),
@@ -430,8 +377,8 @@ async function initDB() {
     await db.query(`
       CREATE TABLE IF NOT EXISTS reports (
         id SERIAL PRIMARY KEY,
-        reporter_id INTEGER REFERENCES users(id),
-        reported_id INTEGER REFERENCES users(id),
+        reporter_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        reported_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         reason TEXT NOT NULL,
         details TEXT,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -442,27 +389,31 @@ async function initDB() {
     await db.query(`
       CREATE TABLE IF NOT EXISTS reputations (
         id SERIAL PRIMARY KEY,
-        rater_id INTEGER REFERENCES users(id),
-        rated_id INTEGER REFERENCES users(id),
+        rater_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        rated_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
         score INTEGER NOT NULL,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(rater_id, rated_id)
       )
     `);
 
-    await db.query(`
-      CREATE TABLE IF NOT EXISTS sessions (
-        key VARCHAR(255) PRIMARY KEY,
-        data TEXT,
-        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS sessions (
+          key VARCHAR(255) PRIMARY KEY,
+          data TEXT,
+          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
 
       // Add report_count columns safely if they don't exist
       const cols = ['report_count', 'report_spam_count', 'report_harassment_count', 'report_inappropriate_count', 'report_other_count'];
       for (const col of cols) {
         try {
-          await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} INTEGER DEFAULT 0`);
+          if (col === 'waiting_at') {
+             await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS waiting_at TIMESTAMP WITH TIME ZONE`);
+          } else {
+             await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS ${col} INTEGER DEFAULT 0`);
+          }
         } catch (e) {
           // Ignore
         }
@@ -480,12 +431,39 @@ async function initDB() {
         await db.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_type VARCHAR(50)`);
         await db.query(`ALTER TABLE messages ADD COLUMN IF NOT EXISTS media_file_id TEXT`);
       } catch(e) {}
+      
+      // MIGRASI: Tambahkan kolom telegram_id ke chats untuk backward compatibility
+      try {
+        // Cek apakah kolom lama masih ada (hanya untuk migrasi dari versi sebelumnya)
+        const checkOldCols = DB_MODE === 'sqlite' 
+          ? await db.query("PRAGMA table_info(chats)")
+          : await db.query("SELECT column_name FROM information_schema.columns WHERE table_name = 'chats'");
+          
+        const hasOldUserCols = DB_MODE === 'sqlite'
+          ? checkOldCols.rows.some(c => c.name === 'user1_id' || c.name === 'user2_id')
+          : checkOldCols.rows.some(c => c.column_name === 'user1_id' || c.column_name === 'user2_id');
+        
+        await db.query(`ALTER TABLE chats ADD COLUMN IF NOT EXISTS user1_telegram_id BIGINT`);
+        await db.query(`ALTER TABLE chats ADD COLUMN IF NOT EXISTS user2_telegram_id BIGINT`);
+        
+        // Migrasikan data yang sudah ada HANYA jika kolom lama masih ada
+        if (hasOldUserCols) {
+          await db.query(`
+            UPDATE chats 
+            SET 
+              user1_telegram_id = (SELECT telegram_id FROM users WHERE id = user1_id),
+              user2_telegram_id = (SELECT telegram_id FROM users WHERE id = user2_id)
+          `);
+        }
+      } catch (e) {
+        // Kolom sudah ada atau tabel baru, ignore
+      }
 
-      // Add Indexes for PostgreSQL
       await db.query(`CREATE INDEX IF NOT EXISTS idx_messages_chat_id ON messages(chat_id)`);
-      await db.query(`CREATE INDEX IF NOT EXISTS idx_chats_users ON chats(user1_id, user2_id)`);
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_chats_users ON chats(user1_telegram_id, user2_telegram_id)`);
       await db.query(`CREATE INDEX IF NOT EXISTS idx_reports_reported ON reports(reported_id)`);
       await db.query(`CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at)`);
+      await db.query(`CREATE INDEX IF NOT EXISTS idx_users_waiting ON users(state, language, waiting_at)`);
     }
 
     logger.info(`Database tables initialized successfully (mode: ${DB_MODE})`);

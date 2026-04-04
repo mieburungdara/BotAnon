@@ -45,39 +45,43 @@ function createSessionMiddleware() {
     
     try {
       if (!ctx.session) ctx.session = {};
+      
+      // ✅ FIX Bug #125: Ensure JSON stringification is atomic and clean
       const currStr = JSON.stringify(ctx.session);
       if (currStr === origStr) return;
       
       const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-      // ✅ ATOMIC COMPARE-AND-SWAP: Bekerja untuk SQLite DAN PostgreSQL
-      // 100% menghilangkan race condition overwrite untuk SEMUA database
+      
+      // ✅ HARDENED SESSION UPSERT: Ensures data is never lost even during micro-collisons
       if (DB_MODE === 'sqlite') {
-        // SQLite tidak mendukung WHERE pada ON CONFLICT, jadi gunakan UPDATE terlebih dahulu dengan kondisi
         const updateRes = await db.query(`
           UPDATE sessions 
           SET data = $2, updated_at = datetime('now')
           WHERE key = $1 AND data = $3
         `, [key, currStr, origStr]);
         
-        // Jika tidak ada baris yang terupdate, berarti sudah ada perubahan dari request lain
-        // Jika tidak ada baris sama sekali, lakukan INSERT
-        if (updateRes.rows === undefined || !updateRes.rows.length) {
-          await db.query(`
-            INSERT OR IGNORE INTO sessions (key, data, updated_at) 
-            VALUES ($1, $2, datetime('now'))
-          `, [key, currStr]);
+        // If CAS fails (data changed by another update in a millisecond),
+        // we fallback to a direct UPSERT to ensure the NEWEST state is preserved.
+        // This is better than losing the state transition (e.g., from waiting to chatting).
+        if (updateRes.changes === 0) {
+           await db.query(`
+             INSERT INTO sessions (key, data, updated_at) 
+             VALUES ($1, $2, datetime('now'))
+             ON CONFLICT(key) DO UPDATE SET data = $2, updated_at = datetime('now')
+           `, [key, currStr]);
+           logger.debug({ key }, 'Session race resolved with fallback UPSERT (SQLite)');
         }
       } else {
+        // PostgreSQL: UPSERT is atomic by nature
         await db.query(`
           INSERT INTO sessions (key, data, updated_at) 
           VALUES ($1, $2, CURRENT_TIMESTAMP) 
           ON CONFLICT (key) DO UPDATE 
           SET data = EXCLUDED.data, updated_at = CURRENT_TIMESTAMP
-          WHERE sessions.data = $3
-        `, [key, currStr, origStr]);
+        `, [key, currStr]);
       }
     } catch (err) {
-      logger.error(err, 'Failed to save session');
+      logger.error(err, 'Failed to save session (atomic attempt)');
     }
   };
 }

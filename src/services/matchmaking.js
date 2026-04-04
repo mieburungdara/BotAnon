@@ -4,12 +4,11 @@
 const { db } = require('../database');
 const { t } = require('../locales');
 const logger = require('../utils/logger');
-const { escapeMarkdown } = require('../utils/markdown');
 const { endChat } = require('./chatService');
-const { updateUserState, getUserById } = require('./userService');
+const { updateUserState } = require('./userService');
 
 function getZodiacCompatibility(z1, z2) {
-  if (!z1 || !z2) return 50;
+  if (!z1 || !z2 || typeof z1 !== 'string' || typeof z2 !== 'string') return 50;
   const matrix = {
     Aries:       { Aries: 50, Taurus: 38, Gemini: 83, Cancer: 42, Leo: 97, Virgo: 63, Libra: 85, Scorpio: 50, Sagittarius: 93, Capricorn: 47, Aquarius: 78, Pisces: 67 },
     Taurus:      { Aries: 38, Taurus: 65, Gemini: 33, Cancer: 97, Leo: 73, Virgo: 90, Libra: 65, Scorpio: 88, Sagittarius: 30, Capricorn: 98, Aquarius: 58, Pisces: 85 },
@@ -42,28 +41,20 @@ async function sendRatingPrompt(bot, telegramId, ratedId, lang) {
   try {
     await bot.telegram.sendMessage(telegramId, text, { reply_markup: { inline_keyboard: buttons } });
   } catch (err) {
-    if (err.response && err.response.error_code === 403) {
-      // User blocked the bot, this is expected
-    } else {
-      logger.error(err, 'Error sending rating prompt');
-    }
+    // Ignore blocks
   }
 }
 
 function getPartnerInfo(role, pUser, lang, signsObj, mainUser) {
   let info = '';
-  if (role === 'admin') {
+  if (role === 'admin' || role === 'vip') {
     const parts = [];
     if (pUser.age) parts.push(`🎂 ${t('btn_age', lang)}: ${pUser.age}`);
-    if (pUser.gender) parts.push(`👤 ${t('btn_gender', lang)}: ${t(`btn_${pUser.gender}`, lang) || pUser.gender}`);
-    if (parts.length) info = '\n' + parts.join(' | ');
-  } else if (role === 'vip') {
-    const parts = [];
     if (pUser.gender) parts.push(`👤 ${t('btn_gender', lang)}: ${t(`btn_${pUser.gender}`, lang) || pUser.gender}`);
     if (pUser.zodiac) parts.push(`${signsObj[pUser.zodiac] || pUser.zodiac}`);
     if (parts.length) info = '\n' + parts.join(' | ');
   }
-  if (role !== 'admin' && mainUser.zodiac && pUser.zodiac) {
+  if (mainUser.zodiac && pUser.zodiac) {
     const compat = getZodiacCompatibility(mainUser.zodiac, pUser.zodiac);
     const pSign = signsObj[pUser.zodiac] || pUser.zodiac;
     info += (role === 'user' ? `\n\n✨ ${pSign}\n` : '\n✨ ') + t('zodiac_compatibility', lang).replace('{percentage}', compat);
@@ -73,28 +64,39 @@ function getPartnerInfo(role, pUser, lang, signsObj, mainUser) {
 
 async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
   try {
+    const tid = BigInt(telegramId);
     const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
+    
     const matchResult = await db.transaction(async (tx) => {
-      const query = DB_MODE === 'postgresql'
-        ? 'SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED'
-        : 'SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1';
-      
-      const wRes = await tx.query(query, ['waiting', telegramId.toString(), userLang]);
-      const waitingUser = wRes.rows[0];
-      if (!waitingUser) return null;
-      // FIX Bug #5: Lock the initiator's row too to prevent double-matching
-      const initiatorQuery = DB_MODE === 'postgresql'
-        ? 'SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE'
-        : 'SELECT * FROM users WHERE telegram_id = $1';
-      const uRes = await tx.query(initiatorQuery, [telegramId.toString()]);
+      const uRes = await tx.query('SELECT id, telegram_id, state, language, role, zodiac FROM users WHERE telegram_id = $1', [tid]);
       const user = uRes.rows[0];
-      if (!user || user.state !== 'waiting' || waitingUser.state !== 'waiting') return null;
+      if (!user) return null;
 
-      await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['chatting', telegramId.toString()]);
-      await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['chatting', waitingUser.telegram_id.toString()]);
-      const chatRes = await tx.query('INSERT INTO chats (user1_id, user2_id) VALUES ($1, $2) RETURNING *', [user.id, waitingUser.id]);
-      const chat = chatRes.rows[0];
-      return { user, waitingUser, chat };
+      const targetLang = userLang || user.language || 'English';
+
+      const qQuery = DB_MODE === 'postgresql'
+        ? 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED'
+        : 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1';
+      
+      const qRes = await tx.query(qQuery, ['waiting', targetLang, user.id]);
+      const waitingUser = qRes.rows[0];
+
+      if (waitingUser) {
+        // We found a match! Directly update both users to 'chatting' and clear waiting_at
+        await tx.query('UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['chatting', user.id]);
+        await tx.query('UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['chatting', waitingUser.id]);
+        
+        const chatRes = await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2) RETURNING *', [user.telegram_id, waitingUser.telegram_id]);
+        return { user, waitingUser, chat: chatRes.rows[0] };
+      }
+
+      // No match found immediately. Transition initiator into 'waiting' queue if they are currently just starting to wait
+      if (user.state === 'waiting') {
+        const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
+        // Force update the waiting_at timestamp so they enter the FIFO queue properly
+        await tx.query(`UPDATE users SET waiting_at = COALESCE(waiting_at, ${ts}), updated_at = ${ts} WHERE id = $1`, [user.id]);
+      }
+      return null;
     });
 
     if (!matchResult) return false;
@@ -109,58 +111,38 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
     const info1 = getPartnerInfo(user.role || 'user', waitingUser, userLang, s1Obj, user);
     const info2 = getPartnerInfo(waitingUser.role || 'user', user, partnerLang, s2Obj, waitingUser);
 
-    // FIX Bugs #1,#4,#25,#26: Send connected notification to BOTH users (not just partner)
-    // and remove the duplicate try-catch block.
-    // info1 = partner info shown to initiator, info2 = initiator info shown to partner
-
-    // Step 1: Notify the initiator (telegramId) about their partner
+    // Step 1: Notify Initiator
     try {
-      const safeInfo1 = escapeMarkdown(info1);
-      const safeConnected = escapeMarkdown(t('now_connected', userLang));
-      await bot.telegram.sendMessage(telegramId, safeConnected + safeInfo1, { parse_mode: 'MarkdownV2' });
-    } catch (initiatorErr) {
-      // Initiator blocked the bot right after matching!
-      await endChat(chat.id);
-      await updateUserState(telegramId, 'idle');
-      // Re-match the innocent partner since they were genuinely waiting
+      const msg1 = t('now_connected', userLang) + info1;
+      await bot.telegram.sendMessage(telegramId, msg1, { parse_mode: 'HTML' });
+    } catch (err) {
+      if (chat) await endChat(chat.id);
+      const isBlocked = (err.response && err.response.error_code === 403);
+      await updateUserState(tid, isBlocked ? 'idle' : 'waiting');
       await updateUserState(waitingUser.telegram_id, 'waiting');
-      // FIX Bugs #7,#8: Use depth limiting to prevent infinite recursion
-      if (_depth < 3) {
-        findMatchForUser(bot, waitingUser.telegram_id, partnerLang, _depth + 1).catch(e => logger.error(e, 'Re-match failed'));
-      }
       return false;
     }
 
-    // Step 2: Notify the partner (waitingUser) about the initiator
+    // Step 2: Notify Partner
     try {
-      const safeInfo2 = escapeMarkdown(info2);
-      const safeConnected = escapeMarkdown(t('now_connected', partnerLang));
-      await bot.telegram.sendMessage(waitingUser.telegram_id, safeConnected + safeInfo2, { parse_mode: 'MarkdownV2' });
-    } catch (partnerErr) {
-      // Partner blocked bot at the last second!
-      await endChat(chat.id);
-      // The partner blocked, so they should be idle.
-      // The initiator did nothing wrong — set them to 'waiting' and re-match.
-      // ✅ Hanya update state jika update benar-benar berhasil
-      // Mencegah state desync ketika terdapat konkurensi
-      const update1 = await updateUserState(waitingUser.telegram_id, 'idle');
-      const update2 = await updateUserState(telegramId, 'waiting');
+      const msg2 = t('now_connected', partnerLang) + info2;
+      await bot.telegram.sendMessage(waitingUser.telegram_id, msg2, { parse_mode: 'HTML' });
+    } catch (err) {
+      if (chat) await endChat(chat.id);
+      const isBlocked = (err.response && err.response.error_code === 403);
+      await updateUserState(waitingUser.telegram_id, isBlocked ? 'idle' : 'waiting');
+      await updateUserState(tid, 'waiting');
       
-      if (!update1 || !update2) {
-        logger.warn({ update1, update2 }, 'User state update failed during matchmaking recovery');
-      }
-      try { await bot.telegram.sendMessage(telegramId, t('partner_not_found', userLang)); } catch (e) { /* initiator also blocked */ }
-      // Re-match the innocent initiator, not the blocker
-      // FIX Bugs #7,#8: Use depth limiting to prevent infinite recursion
-      if (_depth < 3) {
-        findMatchForUser(bot, telegramId, userLang, _depth + 1).catch(e => logger.error(e, 'Re-match failed'));
+      // Auto-retry for innocent initiator if partner just blocked
+      if (isBlocked && _depth < 3) {
+          setTimeout(() => findMatchForUser(bot, tid, userLang, _depth + 1), 500);
       }
       return false;
     }
 
     return true;
   } catch (err) {
-    logger.error(err, 'Error in findMatchForUser');
+    logger.error(err, 'Critical error in matchmaking');
     return false;
   }
 }

@@ -20,7 +20,7 @@ async function runFeatureTests() {
       const ids = userIds.join(',');
       await db.query(`DELETE FROM reputations WHERE rater_id IN (${ids}) OR rated_id IN (${ids})`);
       await db.query(`DELETE FROM messages WHERE sender_telegram_id IN ($1, $2)`, ['999001', '999002']);
-      await db.query(`DELETE FROM chats WHERE user1_id IN (${ids}) OR user2_id IN (${ids})`);
+      await db.query(`DELETE FROM chats WHERE user1_telegram_id IN (SELECT telegram_id FROM users WHERE id IN (${ids})) OR user2_telegram_id IN (SELECT telegram_id FROM users WHERE id IN (${ids}))`);
     }
     await db.query('DELETE FROM users WHERE telegram_id IN ($1, $2, $3, $4, $5)', allTestIds);
 
@@ -55,7 +55,7 @@ async function runFeatureTests() {
     // Set user1 to waiting
     await db.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['waiting', testId1]);
 
-    // SIMULATE findMatchForUser logic (Atomic)
+    // SIMULATE findMatchForUser logic (Atomic Opsi B)
     const match = await db.transaction(async (tx) => {
       // Find a waiting user with language filter
       const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 LIMIT 1', ['waiting', testId1.toString(), 'Indonesian'])).rows[0];
@@ -63,7 +63,7 @@ async function runFeatureTests() {
       
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testId1.toString()]);
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-      await tx.query('INSERT INTO chats (user1_id, user2_id) VALUES ((SELECT id FROM users WHERE telegram_id = $1), $2)', [testId1.toString(), waiter.id]);
+      await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testId1.toString(), waiter.telegram_id.toString()]);
       return waiter;
     });
 
@@ -169,7 +169,7 @@ async function runFeatureTests() {
       
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-      await tx.query('INSERT INTO chats (user1_id, user2_id) VALUES ((SELECT id FROM users WHERE telegram_id = $1), (SELECT id FROM users WHERE telegram_id = $2))', [testIdA, waiter.telegram_id.toString()]);
+      await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
       return { initiator: testIdA, partner: waiter.telegram_id.toString() };
     });
     
@@ -181,7 +181,7 @@ async function runFeatureTests() {
       
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-      await tx.query('INSERT INTO chats (user1_id, user2_id) VALUES ((SELECT id FROM users WHERE telegram_id = $1), (SELECT id FROM users WHERE telegram_id = $2))', [testIdA, waiter.telegram_id.toString()]);
+      await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
       return { initiator: testIdA, partner: waiter.telegram_id.toString() };
     });
     
@@ -207,7 +207,7 @@ async function runFeatureTests() {
     }
     
     // Verify userA is only in ONE active chat
-    const userAChats = (await db.query('SELECT * FROM chats WHERE (user1_id = (SELECT id FROM users WHERE telegram_id = $1) OR user2_id = (SELECT id FROM users WHERE telegram_id = $1)) AND ended_at IS NULL', [testIdA])).rows;
+    const userAChats = (await db.query('SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) AND ended_at IS NULL', [testIdA])).rows;
     if (userAChats.length <= 1) {
       console.log(`✅ UserA active chat count: PASSED (${userAChats.length} active chat)`);
     } else {
@@ -215,7 +215,7 @@ async function runFeatureTests() {
     }
     
     // Cleanup — delete chats first to avoid FK constraint violations
-    await db.query('DELETE FROM chats WHERE user1_id IN (SELECT id FROM users WHERE telegram_id IN ($1, $2, $3)) OR user2_id IN (SELECT id FROM users WHERE telegram_id IN ($1, $2, $3))', [testIdA, testIdB, testIdC]);
+    await db.query('DELETE FROM chats WHERE user1_telegram_id IN ($1, $2, $3) OR user2_telegram_id IN ($1, $2, $3)', [testIdA, testIdB, testIdC]);
     for (const cid of cleanupIds) {
       await db.query('DELETE FROM users WHERE telegram_id = $1', [cid]);
     }

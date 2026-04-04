@@ -29,7 +29,7 @@ const locales = {
     partner_not_found: 'Error: Partner not found. Ending chat.',
     error_occurred: 'An error occurred. Please try again.',
     something_went_wrong: 'Oops! Something went wrong. Please try again later.',
-    now_connected: '*You are now connected!*\nSend messages to chat with your partner. Use /next to end the chat and find a new partner.',
+    now_connected: '<b>You are now connected!</b>\nSend messages to chat with your partner. Use /next to end the chat and find a new partner.',
     btn_male: 'Male',
     btn_female: 'Female',
     btn_age: 'Age',
@@ -44,7 +44,7 @@ const locales = {
     report_submitted: 'Thank you. Your report has been submitted anonymously.',
     not_in_chat_report: 'You must be in an active chat to report a user.',
     no_partner_to_report: 'You have no recent chat partner to report.',
-    auto_warn_message: '⚠️ *AUTOMATIC WARNING*\nOur system has received multiple reports regarding your behavior in chats. Please maintain politeness and respect community guidelines. Further violations may result in restrictions.',
+    auto_warn_message: '⚠️ <b>AUTOMATIC WARNING</b>\nOur system has received multiple reports regarding your behavior in chats. Please maintain politeness and respect community guidelines. Further violations may result in restrictions.',
     rate_partner: 'How was your chat?',
     rate_positive: '👍 Positive',
     rate_negative: '👎 Negative',
@@ -70,6 +70,8 @@ const locales = {
     message_delivery_failed: '⚠️ Message delivery failed.',
     anti_spam_warning: "Please don't spam!",
     report_unsupported_evidence: "⚠️ Please send text, media, or type 'skip'.",
+    already_searching: 'You are already in the search queue. Please be patient, your position is secured for a faster match!',
+    still_waiting: 'You are still in the search queue. Please wait until we find you a partner before sending messages.',
   },
   Indonesian: {
     please_enter_age: 'Mohon masukkan umur Anda:',
@@ -98,7 +100,7 @@ const locales = {
     partner_not_found: 'Error: Pasangan tidak ditemukan. Mengakhiri obrolan.',
     error_occurred: 'Terjadi kesalahan. Silakan coba lagi.',
     something_went_wrong: 'Ups! Ada yang salah. Silakan coba lagi nanti.',
-    now_connected: '*Anda sekarang terhubung!*\nKirim pesan untuk ngobrol dengan pasangan Anda. Gunakan /next untuk mengakhiri obrolan dan mencari pasangan baru.',
+    now_connected: '<b>Anda sekarang terhubung!</b>\nKirim pesan untuk ngobrol dengan pasangan Anda. Gunakan /next untuk mengakhiri obrolan dan mencari pasangan baru.',
     btn_male: 'Laki-laki',
     btn_female: 'Perempuan',
     btn_age: 'Umur',
@@ -113,7 +115,7 @@ const locales = {
     report_submitted: 'Terima kasih. Laporan Anda telah disubmit secara anonim.',
     not_in_chat_report: 'Anda harus sedang dalam obrolan aktif untuk melaporkan pengguna.',
     no_partner_to_report: 'Anda tidak memiliki pasangan obrolan terakhir untuk dilaporkan.',
-    auto_warn_message: '⚠️ *PERINGATAN OTOMATIS*\nSistem kami telah menerima banyak laporan terkait perilaku Anda dalam obrolan. Harap jaga kesopanan dan patuhi panduan komunitas. Pelanggaran lebih lanjut dapat mengakibatkan pembatasan.',
+    auto_warn_message: '⚠️ <b>PERINGATAN OTOMATIS</b>\nSistem kami telah menerima banyak laporan terkait perilaku Anda dalam obrolan. Harap jaga kesopanan dan patuhi panduan komunitas. Pelanggaran lebih lanjut dapat mengakibatkan pembatasan.',
     rate_partner: 'Bagaimana pendapat Anda tentang obrolan terakhir?',
     rate_positive: '👍 Beri nilai positif',
     rate_negative: '👎 Beri nilai negatif',
@@ -139,6 +141,8 @@ const locales = {
     message_delivery_failed: '⚠️ Pesan gagal dikirim.',
     anti_spam_warning: 'Jangan terburu-buru!',
     report_unsupported_evidence: "⚠️ Harap kirim teks, media, atau ketik 'skip'.",
+    already_searching: 'Anda sudah berada dalam antrean pencarian. Mohon bersabar, posisi Anda tetap dipertahankan agar mendapat pasangan lebih cepat!',
+    still_waiting: 'Anda masih dalam antrean pencarian. Mohon tunggu sampai kami menemukan pasangan untuk Anda sebelum mengirim pesan.',
   },
   Spanish: {
     please_enter_age: 'Por favor ingrese su edad:',
@@ -167,7 +171,7 @@ const locales = {
     partner_not_found: 'Error: Compañero no encontrado. Finalizando chat.',
     error_occurred: 'Ocurrió un error. Por favor inténtelo de nuevo.',
     something_went_wrong: '¡Ups! Algo salió mal. Por favor inténtelo de nuevo más tarde.',
-    now_connected: '*¡Ahora está conectado!*\nEnvíe mensajes para chatear con su compañero. Use /next para finalizar el chat y buscar uno nuevo.',
+    now_connected: '<b>¡Ahora está conectado!</b>\nEnvíe mensajes para chatear con su compañero. Use /next para finalizar el chat y buscar uno nuevo.',
     btn_male: 'Masculino',
     btn_female: 'Femenino',
     btn_age: 'Edad',
@@ -182,7 +186,7 @@ const locales = {
     report_submitted: 'Gracias. Su reporte ha sido enviado de forma anónima.',
     not_in_chat_report: 'Debe estar en un chat activo para reportar a un usuario.',
     no_partner_to_report: 'No tienes un compañero de chat reciente para reportar.',
-    auto_warn_message: '⚠️ *ADVERTENCIA AUTOMÁTICA*\nNuestro sistema ha recibido múltiples reportes sobre tu comportamiento en los chats. Por favor, mantén la cortesía y respeta las normas de la comunidad. Violaciones adicionales pueden resultar en restricciones.',
+    auto_warn_message: '⚠️ <b>ADVERTENCIA AUTOMÁTICA</b>\nNuestro sistema ha recibido múltiples reportes sobre tu comportamiento en los chats. Por favor, mantén la cortesía y respeta las normas de la comunidad. Violaciones adicionales pueden resultar en restricciones.',
     rate_partner: '¿Qué te pareció tu último chat?',
     rate_positive: '👍 Positivo',
     rate_negative: '👎 Negativo',
@@ -236,7 +240,7 @@ const locales = {
     partner_not_found: 'Erreur : Partenaire introuvable. Fin de la discussion.',
     error_occurred: 'Une erreur s\'est produite. Veuillez réessayer.',
     something_went_wrong: 'Oups ! Quelque chose a mal tourné. Veuillez réessayer plus tard.',
-    now_connected: '*Vous êtes maintenant connecté !*\nEnvoyez des messages pour discuter avec votre partenaire. Utilisez /next pour mettre fin à la discussion et en trouver un nouveau.',
+    now_connected: '<b>Vous êtes maintenant connecté !</b>\nEnvoyez des messages pour discuter avec votre partenaire. Utilisez /next pour mettre fin à la discussion et en trouver un nouveau.',
     btn_male: 'Homme',
     btn_female: 'Femme',
     btn_age: 'Âge',
@@ -251,7 +255,7 @@ const locales = {
     report_submitted: 'Merci. Votre signalement a été soumis de manière anonyme.',
     not_in_chat_report: 'Vous devez être dans une discussion active pour signaler un utilisateur.',
     no_partner_to_report: 'Vous n\'avez aucun partenaire de discussion récent à signaler.',
-    auto_warn_message: '⚠️ *AVERTISSEMENT AUTOMATIQUE*\nNotre système a reçu plusieurs signalements concernant votre comportement dans les discussions. Veuillez rester poli et respecter les directives de la communauté. D\'autres violations pourraient entraîner des restrictions.',
+    auto_warn_message: '⚠️ <b>AVERTISSEMENT AUTOMATIQUE</b>\nNotre système a reçu plusieurs signalements concernant votre comportement dans les discussions. Veuillez rester poli et respecter les directives de la communauté. D\'autres violations pourraient entraîner des restrictions.',
     rate_partner: 'Comment s\'est passée votre discussion ?',
     rate_positive: '👍 Positif',
     rate_negative: '👎 Négatif',
@@ -305,7 +309,7 @@ const locales = {
     partner_not_found: 'خطأ: لم يتم العثور على شريك. جاري إنهاء الدردشة.',
     error_occurred: 'حدث خطأ. حاول مرة اخرى.',
     something_went_wrong: 'عفوا! هناك خطأ ما. يرجى المحاولة مرة أخرى لاحقاً.',
-    now_connected: '*أنت متصل الآن!*\nأرسل رسائل للدردشة مع شريكك. استخدم /next لإنهاء الدردشة والبحث عن شريك جديد.',
+    now_connected: '<b>أنت متصل الآن!</b>\nأرسل رسائل للدردشة مع شريكك. استخدم /next لإنهاء الدردشة والبحث عن شريك جديد.',
     btn_male: 'ذكر',
     btn_female: 'أنثى',
     btn_age: 'العمر',
@@ -320,7 +324,7 @@ const locales = {
     report_submitted: 'شكرا لك. تم إرسال بلاغك بشكل مجهول.',
     not_in_chat_report: 'يجب أن تكون في محادثة نشطة للإبلاغ عن مستخدم.',
     no_partner_to_report: 'ليس لديك شريك دردشة أخير للإبلاغ عنه.',
-    auto_warn_message: '⚠️ *تحذير تلقائي*\nلقد تلقى نظامنا عدة بلاغات بخصوص سلوكك في الدردشات. يرجى الحفاظ على الأدب واحترام إرشادات المجتمع. قد تؤدي المزيد من الانتهاكات إلى فرض قيود.',
+    auto_warn_message: '⚠️ <b>تحذير تلقائي</b>\nلقد تلقى نظامنا عدة بلاغات بخصوص سلوكك في الدردشات. يرجى الحفاظ على الأدب واحترام إرشادات المجتمع. قد تؤدي المزيد من الانتهاكات إلى فرض قيود.',
     rate_partner: 'كيف كانت دردشتك؟',
     rate_positive: '👍 إيجابي',
     rate_negative: '👎 سلبي',
@@ -350,16 +354,36 @@ const locales = {
 };
 
 /**
- * Helper terjemahan.
- * Mengembalikan teks yang cocok di bahasa yang dipilih, fallback ke bahasa Inggris.
+ * Helper terjemahan yang mendukung interpolasi dan nested keys.
  * 
- * @param {string} key Kunci teks (misalnya 'please_enter_age')
+ * @param {string} key Kunci teks (misalnya 'please_enter_age' atau 'zodiac_signs.Aries')
  * @param {string} lang Bahasa pengguna (misalnya 'Indonesian')
+ * @param {object} params Parameter untuk interpolasi (misalnya { percentage: 85 })
  * @returns {string} Teks yang diterjemahkan
  */
-function t(key, lang) {
+function t(key, lang, params = {}) {
   const language = locales[lang] ? lang : 'English';
-  return locales[language][key] || locales['English'][key] || key;
+  
+  // Fungsi untuk mengambil value dari nested object (dot notation)
+  const getValue = (obj, path) => {
+    return path.split('.').reduce((acc, part) => acc && acc[part], obj);
+  };
+
+  let text = getValue(locales[language], key) || getValue(locales['English'], key) || key;
+
+  // Pastikan text adalah string (jika key merujuk ke object, kembalikan key itu sendiri)
+  if (typeof text !== 'string') {
+    text = key;
+  }
+
+  // Interpolasi variabel {name}
+  if (params && Object.keys(params).length > 0) {
+    Object.entries(params).forEach(([k, v]) => {
+      text = text.replace(new RegExp(`{${k}}`, 'g'), v);
+    });
+  }
+
+  return text;
 }
 
 module.exports = { locales, t };

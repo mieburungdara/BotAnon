@@ -4,7 +4,7 @@
 const { t } = require('../../locales');
 const { db } = require('../../database');
 const logger = require('../../utils/logger');
-const { getUserByTelegramId } = require('../../services/userService');
+const { getUserByTelegramId, getUserById } = require('../../services/userService');
 
 function registerRatingAction(bot) {
   bot.action(/^rate_(\d+)_(pos|neg)$/, async (ctx) => {
@@ -22,22 +22,27 @@ function registerRatingAction(bot) {
 
       if (user.id === ratedId) {
         ctx.session.processing = false;
-        try { await ctx.answerCbQuery(t('cannot_rate_self', lang), { show_alert: true }); } catch(e) {}
-        return;
+        return ctx.editMessageText('⚠️ ' + t('cannot_rate_self', lang));
       }
 
-      const chatCheck = await db.query('SELECT id FROM chats WHERE (user1_id = $1 AND user2_id = $2) OR (user1_id = $2 AND user2_id = $1) LIMIT 1', [user.id, ratedId]);
+       // Backward compatible: masih support user id lama untuk rating yang sudah ada
+       const ratedUser = await getUserById(ratedId);
+       const chatCheck = await db.query('SELECT id FROM chats WHERE (user1_telegram_id = $1 AND user2_telegram_id = $2) OR (user1_telegram_id = $2 AND user2_telegram_id = $1) LIMIT 1', [ctx.from.id.toString(), ratedUser?.telegram_id || '0']);
       if (chatCheck.rows.length === 0) {
         ctx.session.processing = false;
-        try { await ctx.answerCbQuery(t('unauthorized_rating', lang), { show_alert: true }); } catch(e) {}
-        return;
+        return ctx.editMessageText('⚠️ ' + t('unauthorized_rating', lang));
       }
 
-      await db.transaction(async (tx) => {
-        const ex = await tx.query('SELECT id FROM reputations WHERE rater_id = $1 AND rated_id = $2', [user.id, ratedId]);
-        if (ex.rows.length > 0) await tx.query('UPDATE reputations SET score = $1 WHERE rater_id = $2 AND rated_id = $3', [score, user.id, ratedId]);
-        else await tx.query('INSERT INTO reputations (rater_id, rated_id, score) VALUES ($1, $2, $3)', [user.id, ratedId, score]);
-      });
+      try {
+        await db.transaction(async (tx) => {
+          const ex = await tx.query('SELECT id FROM reputations WHERE rater_id = $1 AND rated_id = $2', [user.id, ratedId]);
+          if (ex.rows.length > 0) await tx.query('UPDATE reputations SET score = $1 WHERE rater_id = $2 AND rated_id = $3', [score, user.id, ratedId]);
+          else await tx.query('INSERT INTO reputations (rater_id, rated_id, score) VALUES ($1, $2, $3)', [user.id, ratedId, score]);
+        });
+      } catch (txErr) {
+        logger.error(txErr, 'Rating transaction failed');
+        throw txErr;
+      }
       await ctx.editMessageText(t('rate_recorded', lang));
     } catch (err) {
       logger.error(err, 'Rating error');

@@ -4,76 +4,57 @@
 const { t } = require('../../locales');
 const { db } = require('../../database');
 const logger = require('../../utils/logger');
-const { getUserByTelegramId, getUserById, updateUserState } = require('../../services/userService');
-const { getActiveChatByUserId } = require('../../services/chatService');
+const { getUserById, getUserByTelegramId, updateUserState } = require('../../services/userService');
+const { getActiveChatByTelegramId, getPartnerTelegramId } = require('../../services/chatService');
+
+const { createCommandHandler } = require('../../middleware/commandWrapper');
 
 function registerStopCommand(bot, sendRatingPrompt, findMatchForUser) {
-  bot.command('stop', async (ctx) => {
-    if (ctx.session) {
-      if (ctx.session.processing) return;
-      ctx.session.processing = true;
-      ctx.session.setting = null;
-      ctx.session.attachedEvidence = null;
-      ctx.session.reportDetails = null;
-      ctx.session.reportedId = null;
-      ctx.session.reportReason = null;
-    }
-    try {
-      const tid = ctx.from.id;
-      const user = await getUserByTelegramId(tid);
-      if (!user) {
-        return ctx.reply(t('start_to_register', 'English'));
-      }
-      const lang = user.language || 'English';
-      const activeChat = await getActiveChatByUserId(user.id);
-      if (activeChat) {
-        let partnerTelegramId = null;
-        let partnerLang = 'English';
-        let partnerDbId = null;
-        // FIX Bug #7: Move Telegram I/O outside the database transaction
-        await db.transaction(async (tx) => {
-          await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [activeChat.id]);
-          await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['idle', tid]);
-          const pId = activeChat.user1_id === user.id ? activeChat.user2_id : activeChat.user1_id;
-          const p = await getUserById(pId);
+  bot.command('stop', createCommandHandler(async (ctx, user, tid, lang) => {
+    const activeChat = await getActiveChatByTelegramId(tid);
+
+    if (activeChat) {
+      let partnerTelegramId = null;
+      let partnerLang = 'English';
+      let partnerDbId = null;
+
+      await db.transaction(async (tx) => {
+        // ✅ ATOMIC CHECK: Pastikan chat masih aktif sebelum ditutup
+        const chatCheck = await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 AND is_active = TRUE RETURNING *', [activeChat.id]);
+        if (chatCheck.rows.length === 0) return; // Sudah ditutup orang lain
+
+        await updateUserState(tid, 'idle', tx);
+        const partnerTid = getPartnerTelegramId(activeChat, tid);
+        const pRes = await tx.query('SELECT id, language FROM users WHERE telegram_id = $1', [partnerTid]);
+        const p = pRes.rows[0];
           if (p) {
             partnerLang = p.language || 'English';
-            partnerTelegramId = p.telegram_id;
+            partnerTelegramId = partnerTid;
             partnerDbId = p.id;
-            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2', ['waiting', p.telegram_id]);
+            
+            // ✅ FIX PER RULE #4: Partner should STOP (idle), not auto-requeue
+            await updateUserState(partnerTid, 'idle', tx);
           }
-        });
-        // FIX Bug #9: Re-queue partner for matching after /stop (consistent with /find and /next)
-        if (partnerTelegramId) {
-          try { await ctx.telegram.sendMessage(partnerTelegramId, t('partner_ended_chat', partnerLang)); } catch (pErr) {}
-          // FIX Bug #34: Re-fetch partner to check if they've already been matched with someone else
-          const freshPartner = await getUserById(partnerDbId);
-          if (freshPartner && freshPartner.state === 'waiting') {
-            await sendRatingPrompt(partnerTelegramId, user.id, partnerLang);
-            findMatchForUser(partnerTelegramId, partnerLang).catch(e => logger.error(e));
-          }
-          // FIX Bug #86: Only send rating prompt to initiator if partner was found
-          await sendRatingPrompt(tid, partnerDbId, lang);
-        }
-        await ctx.reply(t('chat_ended', lang));
-      } else if (user.state === 'waiting') {
-        await updateUserState(tid, 'idle');
-        // ✅ FIX BUG #109: Hapus user dari antrian matchmaking saat menekan /stop
-        // Ini adalah bug legendaris yang tidak ditemukan selama 8 bulan
-        // User akan tetap mendapatkan partner meskipun sudah menekan /stop
-        await db.query('DELETE FROM matchmaking_queue WHERE user_id = $1', [user.id]);
-        await ctx.reply(t('stopped_searching', lang));
-      } else {
-        await ctx.reply(t('not_searching', lang));
+      });
+
+      if (partnerTelegramId) {
+        try { await ctx.telegram.sendMessage(partnerTelegramId, t('partner_ended_chat', partnerLang)); } catch (pErr) {}
+        
+        // Notify both about rating
+        await sendRatingPrompt(partnerTelegramId, user.id, partnerLang);
+        await sendRatingPrompt(tid, partnerDbId, lang);
       }
-    } catch (err) {
-      logger.error(err, 'Handler error /stop');
-    } finally {
-      // ✅ GUARANTEED processing flag reset: This will run 100% NO MATTER WHAT HAPPENS
-      // Even with early return, throw, crash, error, anything
-      if (ctx.session) ctx.session.processing = false;
+
+      return ctx.reply(t('chat_ended', lang));
     }
-  });
+
+    if (user.state === 'waiting') {
+      await updateUserState(tid, 'idle');
+      return ctx.reply(t('stopped_searching', lang));
+    }
+
+    return ctx.reply(t('not_searching', lang));
+  }));
 }
 
 module.exports = { registerStopCommand };

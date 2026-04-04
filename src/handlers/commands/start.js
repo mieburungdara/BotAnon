@@ -6,54 +6,43 @@ const { getUserByTelegramId, createUser, syncUserIdentity, updateUserState } = r
 const { getActiveChatByUserId } = require('../../services/chatService');
 const logger = require('../../utils/logger');
 
+const { createCommandHandler } = require('../../middleware/commandWrapper');
+const { getActiveChatByTelegramId } = require('../../services/chatService');
+
 function registerStartCommand(bot, findMatchForUser) {
-  bot.command('start', async (ctx) => {
-    if (ctx.session) {
-      if (ctx.session.processing) return;
-      ctx.session.processing = true;
-      ctx.session.setting = null;
-      ctx.session.attachedEvidence = null;
-      ctx.session.reportedId = null;
-      ctx.session.reportDetails = null;
-      ctx.session.reportReason = null;
+  bot.command('start', createCommandHandler(async (ctx, user, tid, lang) => {
+    if (!user) {
+      const u = await createUser(tid, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
+      if (!u) {
+        logger.error({ tid }, 'Failed to create user record');
+        return ctx.reply(t('something_went_wrong', 'English'));
+      }
+      await ctx.reply(t('welcome_incomplete', 'English'));
+      await ctx.scene.enter('profileSetup');
+      return;
     }
+
+    await syncUserIdentity(tid, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
+    
+    if (await getActiveChatByTelegramId(tid)) {
+      await ctx.reply(t('already_in_chat', lang));
+      return;
+    }
+
+    if (!user.age || !user.gender || !user.language || !user.zodiac) {
+      await ctx.reply(t('profile_incomplete', lang));
+      await ctx.scene.enter('profileSetup');
+      return;
+    }
+
+    await updateUserState(tid, 'waiting');
+    await ctx.reply(t('now_waiting', lang));
     try {
-      const tid = ctx.from.id;
-      const user = await getUserByTelegramId(tid);
-      if (!user) {
-        const u = await createUser(tid, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
-        if (!u) {
-          logger.error({ tid }, 'Failed to create user record');
-          if (ctx.session) ctx.session.processing = false;
-          return ctx.reply(t('something_went_wrong', 'English'));
-        }
-        await ctx.reply(t('welcome_incomplete', 'English'));
-        await ctx.scene.enter('profileSetup');
-        if (ctx.session) ctx.session.processing = false;
-        return;
-      }
-      await syncUserIdentity(tid, ctx.from.username, ctx.from.first_name, ctx.from.last_name);
-      const lang = user.language || 'English';
-      if (await getActiveChatByUserId(user.id)) {
-        // FIX Bug #15: Use a more generic message since /start is not a settings command
-        await ctx.reply(t('already_in_chat', lang) || t('cannot_open_settings_in_chat', lang));
-        if (ctx.session) ctx.session.processing = false;
-        return;
-      }
-      if (!user.age || !user.gender || !user.language || !user.zodiac) {
-        await ctx.reply(t('profile_incomplete', lang));
-        await ctx.scene.enter('profileSetup');
-        if (ctx.session) ctx.session.processing = false;
-        return;
-      }
-      await updateUserState(tid, 'waiting');
-      await ctx.reply(t('now_waiting', lang));
       await findMatchForUser(tid, lang);
-    } catch (err) {
-      logger.error(err, 'Handler error /start');
+    } catch (e) {
+      logger.error(e);
     }
-    if (ctx.session) ctx.session.processing = false;
-  });
+  }, true));
 }
 
 module.exports = { registerStartCommand };
