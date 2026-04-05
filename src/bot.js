@@ -179,17 +179,20 @@ async function startBot() {
     let botReady = IS_WEBHOOK; // Webhooks are ready when server listens
 
     const server = http.createServer(async (req, res) => {
-      // 1. Webhook Handler
-      if (IS_WEBHOOK && req.url === WEBHOOK_PATH) {
+      const url = req.url;
+      logger.debug({ method: req.method, url }, 'Incoming request');
+
+      // 1. Webhook Handler (Handle optional prefix)
+      if (IS_WEBHOOK && (url === WEBHOOK_PATH || url.endsWith(WEBHOOK_PATH))) {
         return bot.webhookCallback(WEBHOOK_PATH)(req, res);
       }
 
-      // 2. Health Monitoring
+      // 2. Health Monitoring (Handle optional prefix)
       const headers = { 'Content-Type': 'application/json' };
-      if (req.url === '/health' || req.url === '/health/live') {
+      if (url.endsWith('/health') || url.endsWith('/health/live')) {
         res.writeHead(200, headers);
         return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), mode: IS_WEBHOOK ? 'webhook' : 'polling' }));
-      } else if (req.url === '/health/ready') {
+      } else if (url.endsWith('/health/ready')) {
         try {
           const dbCheck = await db.query('SELECT 1 as healthy');
           const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0;
@@ -205,9 +208,10 @@ async function startBot() {
         }
       }
 
-      // 3. Not Found
+      // 3. Not Found (With Debug Logging)
+      logger.warn({ url, method: req.method }, '404 Not Found');
       res.writeHead(404, headers);
-      res.end(JSON.stringify({ error: 'not_found' }));
+      res.end(JSON.stringify({ error: 'not_found', path: url }));
     });
 
     server.listen(PORT, () => {
