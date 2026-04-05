@@ -48,17 +48,36 @@ async function sendRatingPrompt(bot, telegramId, ratedTelegramId, lang) {
 
 function getPartnerInfo(role, pUser, lang, signsObj, mainUser) {
   let info = '';
-  if (role === 'admin' || role === 'vip') {
+  // ✅ ADMIN VISIBILITY: Show full user details only to role='admin'
+  if (role === 'admin') {
+    const parts = [];
+    parts.push(`🆔 <b>ID:</b> <code>${pUser.id || 'N/A'}</code>`);
+    if (pUser.username) parts.push(`👤 <b>User:</b> @${pUser.username}`);
+    const fullName = [pUser.first_name, pUser.last_name].filter(Boolean).join(' ');
+    if (fullName) parts.push(`📝 <b>Name:</b> ${fullName}`);
+    
+    // Additional Profile Info
+    const profileParts = [];
+    if (pUser.age) profileParts.push(`🎂 ${pUser.age}`);
+    if (pUser.gender) profileParts.push(`👤 ${t(`btn_${pUser.gender}`, lang) || pUser.gender}`);
+    if (pUser.zodiac) profileParts.push(`${signsObj[pUser.zodiac] || pUser.zodiac}`);
+    
+    info = '\n' + parts.join('\n') + (profileParts.length ? '\n' + profileParts.join(' | ') : '');
+  } 
+  // ✅ VIP/USER VISIBILITY: Stay anonymous
+  else if (role === 'vip') {
     const parts = [];
     if (pUser.age) parts.push(`🎂 ${t('btn_age', lang)}: ${pUser.age}`);
     if (pUser.gender) parts.push(`👤 ${t('btn_gender', lang)}: ${t(`btn_${pUser.gender}`, lang) || pUser.gender}`);
     if (pUser.zodiac) parts.push(`${signsObj[pUser.zodiac] || pUser.zodiac}`);
     if (parts.length) info = '\n' + parts.join(' | ');
   }
+  
   if (mainUser.zodiac && pUser.zodiac) {
     const compat = getZodiacCompatibility(mainUser.zodiac, pUser.zodiac);
     const pSign = signsObj[pUser.zodiac] || pUser.zodiac;
-    info += (role === 'user' ? `\n\n✨ ${pSign}\n` : '\n✨ ') + t('zodiac_compatibility', lang).replace('{percentage}', compat);
+    const zodiacPrefix = (role === 'user' ? `\n\n✨ ${pSign}\n` : '\n✨ ');
+    info += zodiacPrefix + t('zodiac_compatibility', lang).replace('{percentage}', compat);
   }
   return info;
 }
@@ -68,13 +87,15 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
     const tid = BigInt(telegramId);
     
     const matchResult = await db.transaction(async (tx) => {
-      const uRes = await tx.query('SELECT id, telegram_id, state, language, role, zodiac FROM users WHERE telegram_id = $1', [tid]);
+      // ✅ Fetch full details for the initiator
+      const uRes = await tx.query('SELECT * FROM users WHERE telegram_id = $1', [tid]);
       const user = uRes.rows[0];
       if (!user) return null;
 
       const targetLang = userLang || user.language || 'English';
 
-      const qQuery = 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED';
+      // ✅ Fetch full details for the partner in queue
+      const qQuery = 'SELECT * FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED';
       
       const qRes = await tx.query(qQuery, ['waiting', targetLang, user.id]);
       const waitingUser = qRes.rows[0];
