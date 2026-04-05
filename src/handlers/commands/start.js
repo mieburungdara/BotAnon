@@ -3,11 +3,9 @@
  */
 const { t } = require('../../locales');
 const { getUserByTelegramId, createUser, syncUserIdentity, updateUserState } = require('../../services/userService');
-const { getActiveChatByUserId } = require('../../services/chatService');
-const logger = require('../../utils/logger');
-
-const { createCommandHandler } = require('../../middleware/commandWrapper');
 const { getActiveChatByTelegramId } = require('../../services/chatService');
+const logger = require('../../utils/logger');
+const { createCommandHandler } = require('../../middleware/commandWrapper');
 
 function registerStartCommand(bot, findMatchForUser) {
   bot.command('start', createCommandHandler(async (ctx, user, tid, lang) => {

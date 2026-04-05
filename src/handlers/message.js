@@ -6,14 +6,20 @@ const { db } = require('../database');
 const logger = require('../utils/logger');
 const { getUserByTelegramId, updateUserState } = require('../services/userService');
 const { getActiveChatByTelegramId, getPartnerTelegramId, saveMessage, endChat } = require('../services/chatService');
+const { transitionOnBlock } = require('../services/stateMachine');
 
 function registerMessageHandler(bot, findMatchForUser) {
   bot.on('message', async (ctx, next) => {
+    // ✅ FIX Bug L4: Check scene state IMMEDIATELY to avoid redundant DB calls for input in scenes
+    const isUserInScene = !!(ctx.scene && ctx.scene.current);
+    if (isUserInScene) {
+      // If it's a command, let commandWrapper handle it via next()
+      if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) return next();
+      return next(); 
+    }
+
     // Jika pesan adalah command, biarkan command handler yang menangani
     if (ctx.message && ctx.message.text && ctx.message.text.startsWith('/')) return next();
-    
-    // User di scene (misal: /report) harus TETAP bisa menerima pesan dari partner.
-    const isUserInScene = !!(ctx.scene && ctx.scene.current);
     
     if (ctx.session && ctx.session.processing) return next();
     
@@ -89,20 +95,9 @@ function registerMessageHandler(bot, findMatchForUser) {
       } catch (err) {
         // Only end the chat if the partner actually blocked the bot (403 error).
         if (err.response && err.response.error_code === 403) {
-          const { freshPartner } = await db.transaction(async (tx) => {
-              const chatCheck = await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 AND is_active = TRUE RETURNING *', [activeChat.id]);
-              if (chatCheck.rows.length === 0) return { freshPartner: null };
-
-              const pRes = await tx.query('SELECT state, language FROM users WHERE telegram_id = $1', [partnerTid.toString()]);
-              const fp = pRes.rows[0];
-              
-              await updateUserState(partnerTid, 'idle', tx);
-              await updateUserState(tid, 'waiting', tx);
-              
-              return { freshPartner: fp };
-          });
-
-          if (freshPartner) {
+          const { chat } = await transitionOnBlock(tid, partnerTid);
+          
+          if (chat) {
             await ctx.reply(t('partner_disconnected', lang)).catch(() => {});
             findMatchForUser(tid, lang).catch(e => logger.error(e));
           }

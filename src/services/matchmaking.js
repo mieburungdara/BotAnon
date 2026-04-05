@@ -6,6 +6,7 @@ const { t } = require('../locales');
 const logger = require('../utils/logger');
 const { endChat } = require('./chatService');
 const { updateUserState } = require('./userService');
+const { transitionToChatting, transitionOnBlock } = require('./stateMachine');
 
 function getZodiacCompatibility(z1, z2) {
   if (!z1 || !z2 || typeof z1 !== 'string' || typeof z2 !== 'string') return 50;
@@ -28,14 +29,14 @@ function getZodiacCompatibility(z1, z2) {
   return (!sign1 || !sign2 || !matrix[sign1][sign2]) ? 50 : matrix[sign1][sign2];
 }
 
-async function sendRatingPrompt(bot, telegramId, ratedId, lang) {
+async function sendRatingPrompt(bot, telegramId, ratedTelegramId, lang) {
   const text = t('rate_partner', lang);
   const posText = t('rate_positive', lang);
   const negText = t('rate_negative', lang);
   const buttons = [
     [
-      { text: posText, callback_data: `rate_${ratedId}_pos` },
-      { text: negText, callback_data: `rate_${ratedId}_neg` }
+      { text: posText, callback_data: `rate_${ratedTelegramId}_pos` },
+      { text: negText, callback_data: `rate_${ratedTelegramId}_neg` }
     ]
   ];
   try {
@@ -65,7 +66,6 @@ function getPartnerInfo(role, pUser, lang, signsObj, mainUser) {
 async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
   try {
     const tid = BigInt(telegramId);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
     
     const matchResult = await db.transaction(async (tx) => {
       const uRes = await tx.query('SELECT id, telegram_id, state, language, role, zodiac FROM users WHERE telegram_id = $1', [tid]);
@@ -74,28 +74,20 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
 
       const targetLang = userLang || user.language || 'English';
 
-      const qQuery = DB_MODE === 'postgresql'
-        ? 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED'
-        : 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1';
+      const qQuery = 'SELECT id, telegram_id, language, role, zodiac FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED';
       
       const qRes = await tx.query(qQuery, ['waiting', targetLang, user.id]);
       const waitingUser = qRes.rows[0];
 
       if (waitingUser) {
         // We found a match! Directly update both users to 'chatting' and clear waiting_at
-        await tx.query('UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['chatting', user.id]);
-        await tx.query('UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['chatting', waitingUser.id]);
-        
-        const chatRes = await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2) RETURNING *', [user.telegram_id, waitingUser.telegram_id]);
-        return { user, waitingUser, chat: chatRes.rows[0] };
+        const newChat = await transitionToChatting(user.telegram_id, waitingUser.telegram_id, tx);
+        return { user, waitingUser, chat: newChat };
       }
 
-      // No match found immediately. Transition initiator into 'waiting' queue if they are currently just starting to wait
-      if (user.state === 'waiting') {
-        const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
-        // Force update the waiting_at timestamp so they enter the FIFO queue properly
-        await tx.query(`UPDATE users SET waiting_at = COALESCE(waiting_at, ${ts}), updated_at = ${ts} WHERE id = $1`, [user.id]);
-      }
+      // ✅ FIX Bug M3: Transition initiator into 'waiting' queue ATOMICALLY within this transaction
+      const ts = "CURRENT_TIMESTAMP";
+      await tx.query(`UPDATE users SET state = 'waiting', waiting_at = COALESCE(waiting_at, ${ts}), updated_at = ${ts} WHERE id = $1`, [user.id]);
       return null;
     });
 
@@ -116,10 +108,16 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
       const msg1 = t('now_connected', userLang) + info1;
       await bot.telegram.sendMessage(telegramId, msg1, { parse_mode: 'HTML' });
     } catch (err) {
-      if (chat) await endChat(chat.id);
       const isBlocked = (err.response && err.response.error_code === 403);
-      await updateUserState(tid, isBlocked ? 'idle' : 'waiting');
-      await updateUserState(waitingUser.telegram_id, 'waiting');
+      // ✅ FIX Bug #I: Correct argument order — tid is the one who BLOCKED the bot (notification failed to tid),
+      // so waitingUser is the innocent one who should stay in the waiting queue.
+      if (isBlocked) {
+          await transitionOnBlock(waitingUser.telegram_id, tid);
+      } else {
+          if (chat) await endChat(chat.id);
+          await updateUserState(tid, 'waiting');
+          await updateUserState(waitingUser.telegram_id, 'waiting');
+      }
       return false;
     }
 
@@ -128,10 +126,14 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
       const msg2 = t('now_connected', partnerLang) + info2;
       await bot.telegram.sendMessage(waitingUser.telegram_id, msg2, { parse_mode: 'HTML' });
     } catch (err) {
-      if (chat) await endChat(chat.id);
       const isBlocked = (err.response && err.response.error_code === 403);
-      await updateUserState(waitingUser.telegram_id, isBlocked ? 'idle' : 'waiting');
-      await updateUserState(tid, 'waiting');
+      if (isBlocked) {
+          await transitionOnBlock(tid, waitingUser.telegram_id);
+      } else {
+          if (chat) await endChat(chat.id);
+          await updateUserState(waitingUser.telegram_id, 'waiting');
+          await updateUserState(tid, 'waiting');
+      }
       
       // Auto-retry for innocent initiator if partner just blocked
       if (isBlocked && _depth < 3) {

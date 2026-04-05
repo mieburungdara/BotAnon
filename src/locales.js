@@ -371,8 +371,7 @@ function t(key, lang, params = {}) {
 
   let text = getValue(locales[language], key) || getValue(locales['English'], key) || key;
 
-  // Pastikan text adalah string (jika key merujuk ke object, kembalikan key itu sendiri)
-  if (typeof text !== 'string') {
+  if (typeof text !== 'string' && typeof text !== 'object') {
     text = key;
   }
 

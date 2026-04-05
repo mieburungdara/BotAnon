@@ -32,16 +32,28 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
       const lang = ctx.session.language || 'English';
       const rMap = { spam: 'Spam/Advertising', harassment: 'Harassment/Abuse', inappropriate: 'Inappropriate Content', other: 'Other' };
       ctx.session.reportReason = rMap[ctx.match[1]] || 'Other';
+      if (ctx.scene && ctx.scene.current) {
+        await ctx.scene.leave();
+        if (ctx.session) {
+          ctx.session.reportDetails = null;
+          ctx.session.attachedEvidence = null;
+          ctx.session.reportedId = null;
+          ctx.session.reportChatId = null;
+          ctx.session.reportReason = null;
+        }
+      }
       if (ctx.session.reportChatId) {
         let partnerForRematch = null;
         let partnerLangForRematch = 'English';
         try {
           await db.transaction(async (tx) => {
             await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1', [ctx.session.reportChatId]);
-            await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['idle', ctx.session.userId]);
-            const partner = await getUserById(ctx.session.reportedId);
+            await tx.query("UPDATE users SET state = 'idle', waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = $1", [ctx.session.userId]);
+            // ✅ FIX K2: Use tx (transaction client) instead of default db to prevent stale reads
+            const partner = await getUserById(ctx.session.reportedId, tx);
             if (partner && partner.state !== 'idle') {
-              await tx.query('UPDATE users SET state = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', ['waiting', partner.id]);
+              // ✅ FIX Bug: Update by ID directly (not telegram_id) to avoid type mismatch
+              await tx.query("UPDATE users SET state = 'waiting', waiting_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1", [partner.id]);
               partnerForRematch = partner;
               partnerLangForRematch = partner.language || 'English';
             }
@@ -49,7 +61,7 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
           // FIX Bug #7: Move Telegram I/O outside the database transaction
           if (partnerForRematch) {
             try { await ctx.telegram.sendMessage(partnerForRematch.telegram_id, t('partner_ended_chat', partnerLangForRematch)); } catch (pErr) {}
-            await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.session.userId, partnerLangForRematch);
+            await sendRatingPrompt(bot, partnerForRematch.telegram_id, ctx.from.id.toString(), partnerLangForRematch);
             try {
               await findMatchForUser(partnerForRematch.telegram_id, partnerLangForRematch);
             } catch (err) {
@@ -82,13 +94,13 @@ function createReportFlow(bot, findMatchForUser, submitReport) {
     }
   });
 
-  reportFlow.on('message', async (ctx) => {
+  reportFlow.on('message', async (ctx, next) => {
     if (!ctx.message) return;
     
-    // ✅ FIX Bug #90: Allow global commands to break the scene
+    // ✅ FIX Bug K1: Properly escape scene and pass command to global handlers via next()
     if (ctx.message.text && ctx.message.text.startsWith('/')) {
       await ctx.scene.leave();
-      return ctx.telegram.sendMessage(ctx.chat.id, ctx.message.text); // Pass to global handlers
+      return next(); 
     }
 
     // FIX Bug #28: Handle "skip" text command as alternative to the skip_details button

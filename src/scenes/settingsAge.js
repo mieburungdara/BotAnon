@@ -4,6 +4,7 @@
 const { Scenes } = require('telegraf');
 const { t } = require('../locales');
 const { updateUserProfile } = require('../services/userService');
+const logger = require('../utils/logger');
 
 function createSettingsAgeScene() {
   const settingsAgeScene = new Scenes.BaseScene('settingsAgeScene');
@@ -35,8 +36,7 @@ function createSettingsAgeScene() {
       const lang = ctx.session.language || 'English';
       const age = parseInt(ctx.message.text, 10);
       try { await ctx.deleteMessage(ctx.message.message_id); } catch (err) {}
-      if (isNaN(age) || age < 1 || age > 150) {
-        ctx.session.processing = false;
+      if (isNaN(age) || age < 1 || age > 100) {
         return ctx.reply(t('invalid_age', lang));
       }
       await updateUserProfile(ctx.from.id, age, null, null);

@@ -4,7 +4,7 @@
 const { t } = require('../../locales');
 const logger = require('../../utils/logger');
 const { getUserByTelegramId, updateUserZodiac, updateUserProfile } = require('../../services/userService');
-const { getActiveChatByUserId } = require('../../services/chatService');
+const { getActiveChatByTelegramId } = require('../../services/chatService');
 
 function registerSettingsActions(bot) {
   bot.action('setting_age', async (ctx) => {
@@ -13,7 +13,7 @@ function registerSettingsActions(bot) {
     try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
-      if (user && await getActiveChatByUserId(user.id)) {
+      if (user && await getActiveChatByTelegramId(ctx.from.id)) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
@@ -33,7 +33,7 @@ function registerSettingsActions(bot) {
     try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
-      if (user && await getActiveChatByUserId(user.id)) {
+      if (user && await getActiveChatByTelegramId(ctx.from.id)) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
@@ -54,7 +54,7 @@ function registerSettingsActions(bot) {
     try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
-      if (user && await getActiveChatByUserId(user.id)) {
+      if (user && await getActiveChatByTelegramId(ctx.from.id)) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }
@@ -75,7 +75,7 @@ function registerSettingsActions(bot) {
     try { await ctx.answerCbQuery(); } catch (e) { ctx.session.processing = false; return; }
     try {
       const user = await getUserByTelegramId(ctx.from.id);
-      if (user && await getActiveChatByUserId(user.id)) {
+      if (user && await getActiveChatByTelegramId(ctx.from.id)) {
         ctx.session.processing = false;
         return ctx.answerCbQuery(t('cannot_open_settings_in_chat', user.language || 'English'), { show_alert: true });
       }

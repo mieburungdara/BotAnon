@@ -21,11 +21,9 @@ function createCommandHandler(handlerFn, skipUserCheck = false) {
     if (ctx.session) {
       if (ctx.session.processing) return;
       ctx.session.processing = true;
+      // Perbaikan M1: Penghapusan paksa data report di setiap command dipindahkan ke guards.js
+      // agar tidak terjadi data loss saat user mengetik command di tengah scene.
       ctx.session.setting = null;
-      ctx.session.attachedEvidence = null;
-      ctx.session.reportDetails = null;
-      ctx.session.reportedId = null;
-      ctx.session.reportReason = null;
     }
 
     try {

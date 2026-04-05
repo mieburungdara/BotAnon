@@ -40,8 +40,8 @@ async function manageDatabase() {
     await db.query('DELETE FROM reputations');
     console.log('✅ Reputations cleared');
     
-    await db.query('DELETE FROM matchmaking_queue');
-    console.log('✅ Matchmaking queue cleared');
+    // ✅ FIX Bug #F: matchmaking_queue table was removed — removed from reset script
+    // await db.query('DELETE FROM matchmaking_queue'); // Table no longer exists
     
     await db.query('DELETE FROM sessions');
     console.log('✅ Sessions cleared (logged out all users)');

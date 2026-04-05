@@ -5,13 +5,9 @@ const { db } = require('../database');
 const logger = require('../utils/logger');
 
 async function housekeeping() {
-  const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-  
   try {
-    // ✅ FIX Bug #102: Batch Deletion for Messages (Max 1000 per batch)
-    // Prevents database locking on SQLite and vacuum bloat on PG
     let deletedMsgs = 0;
-    const msgCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-7 days')" : "CURRENT_TIMESTAMP - INTERVAL '7 days'";
+    const msgCutoff = "CURRENT_TIMESTAMP - INTERVAL 7 DAY";
     while (true) {
       const res = await db.query(`DELETE FROM messages WHERE id IN (SELECT id FROM messages WHERE sent_at < ${msgCutoff} LIMIT 1000)`);
       // SQLite return changes in res.changes, PG in res.rowCount
@@ -23,7 +19,7 @@ async function housekeeping() {
     }
 
     // ✅ Batch Deletion for Sessions (Max 200 per batch)
-    const sessCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-30 days')" : "CURRENT_TIMESTAMP - INTERVAL '30 days'";
+    const sessCutoff = "CURRENT_TIMESTAMP - INTERVAL 30 DAY";
     while (true) {
       const res = await db.query(`DELETE FROM sessions WHERE key IN (SELECT key FROM sessions WHERE updated_at < ${sessCutoff} LIMIT 200)`);
       const count = res.changes || res.rowCount || 0;
@@ -33,16 +29,16 @@ async function housekeeping() {
 
     // ✅ FIX Bug #103: Efficient Zombie Chat Cleanup
     // Close chats older than 24 hours
-    const zombieCutoff = DB_MODE === 'sqlite' ? "datetime('now', '-1 day')" : "CURRENT_TIMESTAMP - INTERVAL '24 hours'";
-    await db.query(`UPDATE chats SET ended_at = ${DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP"}, is_active = FALSE WHERE is_active = TRUE AND started_at < ${zombieCutoff}`);
+    const zombieCutoff = "CURRENT_TIMESTAMP - INTERVAL 24 HOUR";
+    await db.query(`UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE is_active = TRUE AND started_at < ${zombieCutoff}`);
 
     // Reset user states if they are stuck in 'chatting' for an inactive chat
     const resetSql = `
-      UPDATE users SET state = 'idle', updated_at = ${DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP"} 
-      WHERE state = 'chatting' AND telegram_id IN (
-        SELECT user1_telegram_id FROM chats WHERE is_active = FALSE AND started_at < ${zombieCutoff}
-        UNION
-        SELECT user2_telegram_id FROM chats WHERE is_active = FALSE AND started_at < ${zombieCutoff}
+      UPDATE users SET state = 'idle', updated_at = CURRENT_TIMESTAMP 
+      WHERE state = 'chatting' AND NOT EXISTS (
+        SELECT 1 FROM chats 
+        WHERE is_active = TRUE 
+        AND (user1_telegram_id = users.telegram_id OR user2_telegram_id = users.telegram_id)
       )
     `;
     await db.query(resetSql);

@@ -4,7 +4,8 @@
 const { Scenes } = require('telegraf');
 const { t } = require('../locales');
 const logger = require('../utils/logger');
-const { updateUserProfile, updateUserZodiac, updateUserState } = require('../services/userService');
+const { updateUserProfile, updateUserZodiac, updateUserState, getUserByTelegramId } = require('../services/userService');
+const { db } = require('../database');
 
 function createProfileSetupScene(findMatchForUser) {
   const profileSetup = new Scenes.BaseScene('profileSetup');
@@ -21,9 +22,10 @@ function createProfileSetupScene(findMatchForUser) {
     const age = parseInt(ctx.message.text, 10);
     try { await ctx.deleteMessage(ctx.message.message_id); } catch (err) {}
     
-    if (isNaN(age) || age < 1 || age > 150) {
+    // ✅ Fix L2: Limit maximum age to 100 for better data integrity
+    if (isNaN(age) || age < 1 || age > 100) {
       if (ctx.session.setupMsgId) {
-        try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.setupMsgId, null, t('invalid_age', lang)); return; } catch (e) {}
+        try { await ctx.telegram.editMessageText(ctx.from.id, ctx.session.setupMsgId, null, t('invalid_age', lang)); return; } catch (e) {}
       }
       return ctx.reply(t('invalid_age', lang));
     }
@@ -33,7 +35,7 @@ function createProfileSetupScene(findMatchForUser) {
     const markup = { inline_keyboard: [[{ text: t('btn_male', lang), callback_data: 'gender_male' }], [{ text: t('btn_female', lang), callback_data: 'gender_female' }]] };
     
     if (ctx.session.setupMsgId) {
-      try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.setupMsgId, null, text, { reply_markup: markup }); } 
+      try { await ctx.telegram.editMessageText(ctx.from.id, ctx.session.setupMsgId, null, text, { reply_markup: markup }); } 
       catch (e) { const msg = await ctx.reply(text, { reply_markup: markup }); ctx.session.setupMsgId = msg.message_id; }
     } else {
       const msg = await ctx.reply(text, { reply_markup: markup }); ctx.session.setupMsgId = msg.message_id;
@@ -128,10 +130,8 @@ function createProfileSetupScene(findMatchForUser) {
           return ctx.scene.reenter();
       }
 
-      // ✅ FIX Bug #108: Atomic Profile Setup + Queue Entry
       // Ensures user is NEVER in 'waiting' state without being in the queue
-      const { db } = require('../database');
-      const { getUserByTelegramId } = require('../services/userService');
+      // ✅ FIX K3: Removed dynamic requires from inside handler callback
       
       await db.transaction(async (tx) => {
           const user = await getUserByTelegramId(tid, tx);
@@ -139,11 +139,11 @@ function createProfileSetupScene(findMatchForUser) {
 
           await updateUserProfile(tid, age, gender, lang, tx);
           await updateUserZodiac(tid, zodiac, tx);
-          await updateUserState(tid, 'waiting', tx);
+          await updateUserState(tid, 'idle', tx);
       });
 
       if (ctx.session.setupMsgId) {
-        try { await ctx.telegram.editMessageText(ctx.chat.id, ctx.session.setupMsgId, null, t('profile_completed', lang)); } catch(e) {}
+        try { await ctx.telegram.editMessageText(ctx.from.id, ctx.session.setupMsgId, null, t('profile_completed', lang)); } catch(e) {}
       } else {
         await ctx.reply(t('profile_completed', lang));
       }

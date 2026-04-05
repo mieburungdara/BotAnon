@@ -15,6 +15,8 @@ const { Telegraf, Scenes } = require('telegraf');
 const http = require('http');
 const { db, initDB } = require('./database');
 const { t } = require('./locales');
+const { createReport, incrementReportCount } = require('./services/reportService');
+const { getUserByTelegramId } = require('./services/userService');
 
 if (!process.env.BOT_TOKEN) {
   logger.fatal('CRITICAL ERROR: BOT_TOKEN is not defined in .env file!');
@@ -80,7 +82,6 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
     }
   } catch (err) {
     logger.error(err, 'Submit report error');
-    const lang = ctx.session.language || 'English';
     await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
   }
   ctx.session.reportDetails = null;
@@ -145,21 +146,27 @@ bot.telegram.setMyCommands([
 async function startBot() {
   try {
     await initDB();
-    logger.info('Starting bot...');
-    const lCfg = {};
-    if (process.env.USE_WEBHOOK === 'true') {
-      let domain = process.env.WEBHOOK_DOMAIN;
+    // ✅ CONSOLIDATED SERVER (SINGLE PORT)
+    const IS_WEBHOOK = process.env.USE_WEBHOOK === 'true';
+    const PORT = parseInt(process.env.PORT || process.env.WEBHOOK_PORT || '3000', 10);
+    const WEBHOOK_PATH = process.env.WEBHOOK_PATH || `/telegraf/${bot.token}`;
+
+    if (IS_WEBHOOK) {
+      const domain = process.env.WEBHOOK_DOMAIN;
       if (!domain) {
-        logger.error('WEBHOOK_DOMAIN is required when USE_WEBHOOK=true');
+        logger.fatal('WEBHOOK_DOMAIN is required when USE_WEBHOOK=true');
         process.exit(1);
       }
-      domain = domain.replace(/^https?:\/\//i, '');
-      lCfg.webhook = { domain, port: parseInt(process.env.WEBHOOK_PORT || '3000', 10), hookPath: process.env.WEBHOOK_PATH || `/telegraf/${bot.token}` };
+      await bot.telegram.setWebhook(`https://${domain.replace(/^https?:\/\//i, '')}${WEBHOOK_PATH}`);
+      logger.info({ domain, path: WEBHOOK_PATH }, 'Webhook set successfully.');
+    } else {
+      await bot.launch();
+      logger.info('Bot started using Long Polling.');
     }
-    await bot.launch(lCfg);
-    logger.info(lCfg.webhook ? 'Running using Webhooks.' : 'Running using Long Polling.');
 
-    await housekeeping();
+    // ✅ Fix L1: Initial housekeeping should be non-fatal to bot startup
+    housekeeping().catch(e => logger.error(e, 'Initial housekeeping job failed (non-fatal)'));
+    
     const hkInterval = setInterval(async () => {
       try {
         await housekeeping();
@@ -169,34 +176,44 @@ async function startBot() {
     }, 12 * 60 * 60 * 1000);
     
     // Rec #2: Enhanced health check with liveness and readiness probes
-    let botReady = false;
+    let botReady = IS_WEBHOOK; // Webhooks are ready when server listens
+
     const server = http.createServer(async (req, res) => {
+      // 1. Webhook Handler
+      if (IS_WEBHOOK && req.url === WEBHOOK_PATH) {
+        return bot.webhookCallback(WEBHOOK_PATH)(req, res);
+      }
+
+      // 2. Health Monitoring
       const headers = { 'Content-Type': 'application/json' };
       if (req.url === '/health' || req.url === '/health/live') {
-        // Liveness: is the process alive?
         res.writeHead(200, headers);
-        res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), pid: process.pid }));
+        return res.end(JSON.stringify({ status: 'ok', uptime: process.uptime(), mode: IS_WEBHOOK ? 'webhook' : 'polling' }));
       } else if (req.url === '/health/ready') {
-        // Readiness: is the bot connected and DB accessible?
         try {
           const dbCheck = await db.query('SELECT 1 as healthy');
-          const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0 && !!dbCheck.rows[0].healthy;
-          if (dbHealthy && botReady) {
+          const dbHealthy = dbCheck.rows && dbCheck.rows.length > 0;
+          if (dbHealthy) {
             res.writeHead(200, headers);
-            res.end(JSON.stringify({ status: 'ready', db: 'connected', bot: 'launched' }));
-          } else {
-            res.writeHead(503, headers);
-            res.end(JSON.stringify({ status: 'not_ready', db: dbHealthy ? 'connected' : 'disconnected', bot: botReady ? 'launched' : 'pending' }));
+            return res.end(JSON.stringify({ status: 'ready', db: 'connected' }));
           }
-        } catch (err) {
-          logger.error(err, 'Health readiness check failed');
           res.writeHead(503, headers);
-          res.end(JSON.stringify({ status: 'not_ready', db: 'error' }));
+          return res.end(JSON.stringify({ status: 'not_ready', db: 'disconnected' }));
+        } catch (err) {
+          res.writeHead(503, headers);
+          return res.end(JSON.stringify({ status: 'error', message: err.message }));
         }
-      } else { res.writeHead(404, headers); res.end(JSON.stringify({ error: 'not_found' })); }
+      }
+
+      // 3. Not Found
+      res.writeHead(404, headers);
+      res.end(JSON.stringify({ error: 'not_found' }));
     });
-    const hPort = process.env.PORT_HEALTH || (lCfg.webhook ? (lCfg.webhook.port + 1) : 3000);
-    server.listen(hPort, () => logger.info(`Health check server running on port ${hPort}`));
+
+    server.listen(PORT, () => {
+      logger.info(`Consolidated server running on port ${PORT}`);
+      botReady = true;
+    });
 
     // Mark bot as ready after successful launch
     botReady = true;

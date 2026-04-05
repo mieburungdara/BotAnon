@@ -9,6 +9,7 @@ function createCommandSceneGuard() {
       // Don't interrupt if another operation is processing
       if (ctx.session && ctx.session.processing) return next();
       if (ctx.scene && ctx.scene.current) {
+        await ctx.scene.leave();
         if (ctx.session) {
           ctx.session.reportDetails = null;
           ctx.session.attachedEvidence = null;
@@ -16,7 +17,6 @@ function createCommandSceneGuard() {
           ctx.session.reportChatId = null;
           ctx.session.reportReason = null;
         }
-        await ctx.scene.leave();
       }
     }
     return next();

@@ -13,9 +13,9 @@ function getPartnerTelegramId(chat, userTelegramId) {
     : chat.user1_telegram_id.toString();
 }
 
-async function getActiveChatByTelegramId(telegramId) {
+async function getActiveChatByTelegramId(telegramId, tx = db) {
   try {
-    const res = await db.query(
+    const res = await tx.query(
       'SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) AND ended_at IS NULL AND is_active = TRUE',
       [telegramId.toString()]
     );
@@ -26,9 +26,9 @@ async function getActiveChatByTelegramId(telegramId) {
   }
 }
 
-async function getLastChatByTelegramId(telegramId) {
+async function getLastChatByTelegramId(telegramId, tx = db) {
   try {
-    const res = await db.query(
+    const res = await tx.query(
       'SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) ORDER BY started_at DESC LIMIT 1',
       [telegramId.toString()]
     );
@@ -39,9 +39,9 @@ async function getLastChatByTelegramId(telegramId) {
   }
 }
 
-async function endChat(chatId) {
+async function endChat(chatId, tx = db) {
   try {
-    const res = await db.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 RETURNING *', [chatId]);
+    const res = await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 RETURNING *', [chatId]);
     return res.rows[0];
   } catch (err) {
     logger.error(err, `Error in endChat (${chatId})`);
@@ -49,9 +49,9 @@ async function endChat(chatId) {
   }
 }
 
-async function saveMessage(chatId, senderTelegramId, content, mediaType = null, mediaFileId = null) {
+async function saveMessage(chatId, senderTelegramId, content, mediaType = null, mediaFileId = null, tx = db) {
   try {
-    await db.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES ($1, $2, $3, $4, $5)', [chatId, senderTelegramId, content, mediaType, mediaFileId]);
+    await tx.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES ($1, $2, $3, $4, $5)', [chatId, senderTelegramId, content, mediaType, mediaFileId]);
     return true;
   } catch (err) {
     logger.error(err, `Error in saveMessage (chat: ${chatId})`);
@@ -59,27 +59,10 @@ async function saveMessage(chatId, senderTelegramId, content, mediaType = null, 
   }
 }
 
-// Backward compatibility - will be removed later
-async function getActiveChatByUserId(userId) {
-  logger.warn('DEPRECATED: getActiveChatByUserId() dipanggil, gunakan getActiveChatByTelegramId()');
-  const user = await db.query('SELECT telegram_id FROM users WHERE id = $1', [userId]);
-  if (user.rows[0]) return getActiveChatByTelegramId(user.rows[0].telegram_id);
-  return undefined;
-}
-
-async function getLastPartnerByUserId(userId) {
-  logger.warn('DEPRECATED: getLastPartnerByUserId() dipanggil, gunakan getLastChatByTelegramId()');
-  const user = await db.query('SELECT telegram_id FROM users WHERE id = $1', [userId]);
-  if (user.rows[0]) return getLastChatByTelegramId(user.rows[0].telegram_id);
-  return undefined;
-}
-
 module.exports = {
   getPartnerTelegramId,
   getActiveChatByTelegramId,
   getLastChatByTelegramId,
-  getActiveChatByUserId,
-  getLastPartnerByUserId,
   endChat,
   saveMessage,
 };

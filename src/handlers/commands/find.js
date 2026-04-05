@@ -2,11 +2,10 @@
  * Find Command Handler — /find command logic.
  */
 const { t } = require('../../locales');
-const { db } = require('../../database');
 const logger = require('../../utils/logger');
 const { getUserByTelegramId, updateUserState } = require('../../services/userService');
-const { getActiveChatByTelegramId, getPartnerTelegramId } = require('../../services/chatService');
-
+const { getActiveChatByTelegramId } = require('../../services/chatService');
+const { transitionToWaiting } = require('../../services/stateMachine');
 const { createCommandHandler } = require('../../middleware/commandWrapper');
 
 function registerFindCommand(bot, findMatchForUser, sendRatingPrompt) {
@@ -17,44 +16,26 @@ function registerFindCommand(bot, findMatchForUser, sendRatingPrompt) {
       // 🔄 CASE: SWITCH PARTNER (Like /next)
       let partnerTid = null;
       let partnerLang = 'English';
-      let partnerDbId = null;
 
       try {
-        const pTid = getPartnerTelegramId(activeChat, tid);
-        const p = await getUserByTelegramId(pTid);
-        if (p) {
-          partnerLang = p.language || 'English';
-          partnerTid = pTid;
-          partnerDbId = p.id;
-        }
-
-        await db.transaction(async (tx) => {
-          // Commit chat end atomically
-          const chatCheck = await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 AND is_active = TRUE RETURNING *', [activeChat.id]);
-          if (chatCheck.rows.length === 0) return;
-
-          await updateUserState(tid, 'waiting', tx);
-          
-          if (p) {
-            // ✅ RULE #4: Partner goes to IDLE and is removed from queue
-            await updateUserState(partnerTid, 'idle', tx);
-          }
-        });
-
+        const result = await transitionToWaiting(tid);
+        partnerTid = result.partnerTid;
         if (partnerTid) {
-          // Notify partner clearly that their partner left to find someone else
-          await ctx.telegram.sendMessage(partnerTid, t('partner_ended_chat', partnerLang)).catch(() => {});
-          await sendRatingPrompt(partnerTid, user.id, partnerLang);
-          await sendRatingPrompt(tid, partnerDbId, lang);
+           const p = await getUserByTelegramId(partnerTid);
+           if (p) {
+             partnerLang = p.language || 'English';
+           }
+           
+           // Notify partner clearly that their partner left to find someone else
+           await ctx.telegram.sendMessage(partnerTid, t('partner_ended_chat', partnerLang)).catch(() => {});
+           await sendRatingPrompt(partnerTid, tid, partnerLang);
+           await sendRatingPrompt(tid, partnerTid, lang);
         }
       } catch (err) {
         logger.error(err, 'Switch partner failed in /find');
       }
     } else {
-      // New search if not in chat
-      if (user.state !== 'waiting') {
-        await updateUserState(tid, 'waiting');
-      }
+      // Logic for moving state to 'waiting' moved INTO findMatchForUser transaction for M3
     }
 
     // Trigger matchmaking and WAIT for result

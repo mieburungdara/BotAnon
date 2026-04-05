@@ -3,7 +3,7 @@
  */
 const { t } = require('../../locales');
 const { getUserByTelegramId } = require('../../services/userService');
-const { getActiveChatByUserId } = require('../../services/chatService');
+const { getActiveChatByTelegramId } = require('../../services/chatService');
 
 function registerSettingsCommand(bot) {
   bot.command('settings', async (ctx) => {
@@ -20,7 +20,7 @@ function registerSettingsCommand(bot) {
       const user = await getUserByTelegramId(ctx.from.id);
       if (!user) return ctx.reply(t('start_to_register', 'English'));
       const lang = user.language || 'English';
-      if (await getActiveChatByUserId(user.id)) return ctx.reply(t('cannot_open_settings_in_chat', lang));
+      if (await getActiveChatByTelegramId(ctx.from.id)) return ctx.reply(t('cannot_open_settings_in_chat', lang));
       const msg = await ctx.reply(t('settings_menu', lang), { reply_markup: { inline_keyboard: [[{ text: t('btn_age', lang), callback_data: 'setting_age' }], [{ text: t('btn_gender', lang), callback_data: 'setting_gender' }], [{ text: t('btn_zodiac', lang), callback_data: 'setting_zodiac' }], [{ text: t('btn_language', lang), callback_data: 'setting_language' }]] } });
       ctx.session.settingsMsgId = msg.message_id;
     } catch (err) {

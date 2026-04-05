@@ -40,10 +40,7 @@ async function getUserById(id, tx = db) {
 async function createUser(telegramId, username, firstName, lastName, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const sql = DB_MODE === 'sqlite'
-      ? 'INSERT OR IGNORE INTO users (telegram_id, username, first_name, last_name) VALUES ($1, $2, $3, $4) RETURNING *'
-      : 'INSERT INTO users (telegram_id, username, first_name, last_name) VALUES ($1, $2, $3, $4) ON CONFLICT (telegram_id) DO NOTHING RETURNING *';
+    const sql = 'INSERT IGNORE INTO users (telegram_id, username, first_name, last_name) VALUES ($1, $2, $3, $4) RETURNING *';
     
     const res = await tx.query(sql, [tid, username, firstName, lastName]);
     
@@ -61,8 +58,7 @@ async function createUser(telegramId, username, firstName, lastName, tx = db) {
 async function updateUserProfile(telegramId, age, gender, language, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
+    const ts = "CURRENT_TIMESTAMP";
     
     const res = await tx.query(
       `UPDATE users SET age = COALESCE($1, age), gender = COALESCE($2, gender), language = COALESCE($3, language), updated_at = ${ts} WHERE telegram_id = $4 RETURNING *`,
@@ -81,8 +77,7 @@ async function updateUserProfile(telegramId, age, gender, language, tx = db) {
 async function updateUserState(telegramId, state, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
+    const ts = "CURRENT_TIMESTAMP";
     
     // ✅ ATOMIC UPDATE: Handle the 'waiting_at' FIFO queue inline
     let query = '';
@@ -107,7 +102,8 @@ async function updateUserState(telegramId, state, tx = db) {
  */
 async function resetAllUsers() {
   try {
-    await db.query("UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = CURRENT_TIMESTAMP");
+    const ts = "CURRENT_TIMESTAMP";
+    await db.query(`UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = ${ts}`);
     return true;
   } catch (err) {
     logger.error(err, 'Error in resetAllUsers');
@@ -121,8 +117,7 @@ async function resetAllUsers() {
 async function updateUserZodiac(telegramId, zodiac, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
+    const ts = "CURRENT_TIMESTAMP";
 
     const res = await tx.query(
       `UPDATE users SET zodiac = $1, updated_at = ${ts} WHERE telegram_id = $2 RETURNING *`,
@@ -141,8 +136,7 @@ async function updateUserZodiac(telegramId, zodiac, tx = db) {
 async function syncUserIdentity(tid, uname, fname, lname, tx = db) {
   try {
     const btid = BigInt(tid);
-    const DB_MODE = (process.env.DB_MODE || 'sqlite').toLowerCase();
-    const ts = DB_MODE === 'sqlite' ? "datetime('now')" : "CURRENT_TIMESTAMP";
+    const ts = "CURRENT_TIMESTAMP";
 
     const res = await tx.query(
       `UPDATE users SET username = $1, first_name = $2, last_name = $3, updated_at = ${ts} WHERE telegram_id = $4 RETURNING *`, 
