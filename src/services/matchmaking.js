@@ -106,9 +106,9 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
         return { user, waitingUser, chat: newChat };
       }
 
-      // ✅ FIX Bug M3: Transition initiator into 'waiting' queue ATOMICALLY within this transaction
-      const ts = "CURRENT_TIMESTAMP";
-      await tx.query(`UPDATE users SET state = 'waiting', waiting_at = COALESCE(waiting_at, ${ts}), updated_at = ${ts} WHERE id = $1`, [user.id]);
+// ✅ FIX Bug M3: Transition initiator into 'waiting' queue ATOMICALLY within this transaction
+       const ts = new Date();
+       await tx.query(`UPDATE users SET state = 'waiting', waiting_at = COALESCE(waiting_at, $2), updated_at = $2 WHERE id = $1`, [user.id, ts]);
       return null;
     });
 

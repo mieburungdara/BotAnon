@@ -58,10 +58,9 @@ async function createUser(telegramId, username, firstName, lastName, tx = db) {
 async function updateUserProfile(telegramId, age, gender, language, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const ts = "CURRENT_TIMESTAMP";
     
     const res = await tx.query(
-      `UPDATE users SET age = COALESCE($1, age), gender = COALESCE($2, gender), language = COALESCE($3, language), updated_at = ${ts} WHERE telegram_id = $4 RETURNING *`,
+      `UPDATE users SET age = COALESCE($1, age), gender = COALESCE($2, gender), language = COALESCE($3, language), updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $4 RETURNING *`,
       [age, gender, language, tid]
     );
     return res.rows[0];
@@ -77,16 +76,15 @@ async function updateUserProfile(telegramId, age, gender, language, tx = db) {
 async function updateUserState(telegramId, state, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const ts = "CURRENT_TIMESTAMP";
     
     // ✅ ATOMIC UPDATE: Handle the 'waiting_at' FIFO queue inline
     let query = '';
     if (state === 'waiting') {
-      query = `UPDATE users SET state = $1, waiting_at = ${ts}, updated_at = ${ts} WHERE telegram_id = $2 RETURNING id, state`;
+      query = `UPDATE users SET state = $1, waiting_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING id, state`;
     } else {
-      query = `UPDATE users SET state = $1, waiting_at = NULL, updated_at = ${ts} WHERE telegram_id = $2 RETURNING id, state`;
+      query = `UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING id, state`;
     }
-
+    
     const res = await tx.query(query, [state, tid]);
     const user = res.rows[0];
     
@@ -102,8 +100,7 @@ async function updateUserState(telegramId, state, tx = db) {
  */
 async function resetAllUsers() {
   try {
-    const ts = "CURRENT_TIMESTAMP";
-    await db.query(`UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = ${ts}`);
+    await db.query(`UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = CURRENT_TIMESTAMP`);
     return true;
   } catch (err) {
     logger.error(err, 'Error in resetAllUsers');
@@ -117,10 +114,9 @@ async function resetAllUsers() {
 async function updateUserZodiac(telegramId, zodiac, tx = db) {
   try {
     const tid = BigInt(telegramId);
-    const ts = "CURRENT_TIMESTAMP";
 
     const res = await tx.query(
-      `UPDATE users SET zodiac = $1, updated_at = ${ts} WHERE telegram_id = $2 RETURNING *`,
+      `UPDATE users SET zodiac = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING *`,
       [zodiac, tid]
     );
     return res.rows[0];
@@ -136,10 +132,9 @@ async function updateUserZodiac(telegramId, zodiac, tx = db) {
 async function syncUserIdentity(tid, uname, fname, lname, tx = db) {
   try {
     const btid = BigInt(tid);
-    const ts = "CURRENT_TIMESTAMP";
 
     const res = await tx.query(
-      `UPDATE users SET username = $1, first_name = $2, last_name = $3, updated_at = ${ts} WHERE telegram_id = $4 RETURNING *`, 
+      `UPDATE users SET username = $1, first_name = $2, last_name = $3, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $4 RETURNING *`, 
       [uname, fname, lname, btid]
     );
     return res.rows[0];
