@@ -9,7 +9,7 @@ async function housekeeping() {
     let deletedMsgs = 0;
     const msgCutoff = "CURRENT_TIMESTAMP - INTERVAL 7 DAY";
     while (true) {
-      const res = await db.query(`DELETE FROM messages WHERE id IN (SELECT id FROM messages WHERE sent_at < ${msgCutoff} LIMIT 1000)`);
+      const res = await db.query(`DELETE FROM messages WHERE sent_at < ? LIMIT 1000`, [msgCutoff]);
       // SQLite return changes in res.changes, PG in res.rowCount
       const count = res.changes || res.rowCount || 0;
       if (count === 0) break;
@@ -21,7 +21,7 @@ async function housekeeping() {
     // ✅ Batch Deletion for Sessions (Max 200 per batch)
     const sessCutoff = "CURRENT_TIMESTAMP - INTERVAL 30 DAY";
     while (true) {
-      const res = await db.query(`DELETE FROM sessions WHERE key IN (SELECT key FROM sessions WHERE updated_at < ${sessCutoff} LIMIT 200)`);
+      const res = await db.query(`DELETE FROM sessions WHERE updated_at < ? LIMIT 200`, [sessCutoff]);
       const count = res.changes || res.rowCount || 0;
       if (count === 0) break;
       await new Promise(resolve => setTimeout(resolve, 10));
