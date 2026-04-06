@@ -23,10 +23,10 @@ function extractTableName(sql, type) {
     tableName = match ? match[1] : '';
   }
   
-  if (allowedTables.includes(tableName.toLowerCase())) {
-    return tableName;
-  }
-  throw new Error(`Invalid or unauthorized table name: ${tableName}`);
+   if (allowedTables.includes(tableName.toLowerCase())) {
+     return tableName.toLowerCase();
+   }
+   throw new Error(`Invalid or unauthorized table name: ${tableName}`);
 }
 
 /**

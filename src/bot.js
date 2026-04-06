@@ -56,42 +56,41 @@ const boundSendRating = (telegramId, ratedId, lang) => sendRatingPrompt(bot, tel
 const profileSetup = createProfileSetupScene(boundFindMatch);
 const settingsAgeScene = createSettingsAgeScene();
 const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
-  const { createReport, incrementReportCount } = require('./services/reportService');
-  const { getUserByTelegramId } = require('./services/userService');
-  const lang = ctx.session.language || 'English';
-  const reason = ctx.session.reportReason || 'Other';
-  let details = ctx.session.reportDetails || null;
-  if (ctx.session.attachedEvidence) details = (details ? details + "\n---\n" : "") + ctx.session.attachedEvidence;
-  try {
-    const user = await getUserByTelegramId(ctx.from.id);
-    if (user && ctx.session.reportedId) {
-      await createReport(user.id, ctx.session.reportedId, reason, details);
-      const repUser = await incrementReportCount(ctx.session.reportedId, reason);
-      await ctx.reply(t('report_submitted', lang));
-      await boundSendRating(ctx.from.id, ctx.session.reportedId, lang);
-      if (repUser && repUser.report_count % 3 === 0) {
-        try {
-          const { escapeMarkdown } = require('./utils/markdown');
-          const safeWarn = escapeMarkdown(t('auto_warn_message', repUser.language || 'English'));
-          await ctx.telegram.sendMessage(repUser.telegram_id, safeWarn, { parse_mode: 'MarkdownV2' });
-        } catch (w) { logger.warn(w, 'Failed to send auto-warn message'); }
-      }
-    } else {
-      // FIX Bug #90: Don't send rating prompt if report submission failed due to missing data
-      logger.warn({ userId: ctx.from.id, reportedId: ctx.session.reportedId }, 'Report submission skipped — missing user or reportedId');
-    }
-  } catch (err) {
-    logger.error(err, 'Submit report error');
-    await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
-  }
-  ctx.session.reportDetails = null;
-  ctx.session.attachedEvidence = null;
-  ctx.session.reportedId = null;
-  ctx.session.reportChatId = null;
-  ctx.session.reportReason = null;
-  // FIX Bug #47: ctx.scene.leave() may throw if scene already left (e.g., user typed a command)
-  try { await ctx.scene.leave(); } catch (e) { logger.warn(e, 'Failed to leave reportFlow scene'); }
-});
+   const lang = ctx.session.language || 'English';
+   const reason = ctx.session.reportReason || 'Other';
+   let details = ctx.session.reportDetails || null;
+   if (ctx.session.attachedEvidence) details = (details ? details + "\n---\n" : "") + ctx.session.attachedEvidence;
+   try {
+     const user = await getUserByTelegramId(ctx.from.id);
+     if (user && ctx.session.reportedId) {
+       const { createReport, incrementReportCount } = require('./services/reportService');
+       await createReport(user.id, ctx.session.reportedId, reason, details);
+       const repUser = await incrementReportCount(ctx.session.reportedId, reason);
+       await ctx.reply(t('report_submitted', lang));
+       await boundSendRating(ctx.from.id, ctx.session.reportedId, lang);
+       if (repUser && repUser.report_count % 3 === 0) {
+         try {
+           const { escapeMarkdown } = require('./utils/markdown');
+           const safeWarn = escapeMarkdown(t('auto_warn_message', repUser.language || 'English'));
+           await ctx.telegram.sendMessage(repUser.telegram_id, safeWarn, { parse_mode: 'MarkdownV2' });
+         } catch (w) { logger.warn(w, 'Failed to send auto-warn message'); }
+       }
+     } else {
+       // FIX Bug #90: Don't send rating prompt if report submission failed due to missing data
+       logger.warn({ userId: ctx.from.id, reportedId: ctx.session.reportedId }, 'Report submission skipped — missing user or reportedId');
+     }
+   } catch (err) {
+     logger.error(err, 'Submit report error');
+     await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
+   }
+   ctx.session.reportDetails = null;
+   ctx.session.attachedEvidence = null;
+   ctx.session.reportedId = null;
+   ctx.session.reportChatId = null;
+   ctx.session.reportReason = null;
+   // FIX Bug #47: ctx.scene.leave() may throw if scene already left (e.g., user typed a command)
+   try { await ctx.scene.leave(); } catch (e) { logger.warn(e, 'Failed to leave reportFlow scene'); }
+ });
 
 const stage = new Scenes.Stage([profileSetup, reportFlow, settingsAgeScene]);
 
@@ -214,13 +213,10 @@ async function startBot() {
       res.end(JSON.stringify({ error: 'not_found', path: url }));
     });
 
-    server.listen(PORT, () => {
-      logger.info(`Consolidated server running on port ${PORT}`);
-      botReady = true;
-    });
-
-    // Mark bot as ready after successful launch
-    botReady = true;
+server.listen(PORT, () => {
+  logger.info(`Consolidated server running on port ${PORT}`);
+  botReady = true;
+});
 
     // FIX Bug #11: Clear housekeeping interval and await server close during shutdown
     const shutdown = async (signal) => {
