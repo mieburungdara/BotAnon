@@ -91,7 +91,9 @@ function registerMessageHandler(bot, findMatchForUser) {
          await ctx.telegram.sendChatAction(partnerTid, action).catch((err) => logger.error(err, 'Failed to send chat action'));
         
         // ✅ FIX Bug #109: Preserve message sequence by awaiting copyMessage strictly
-        await ctx.telegram.copyMessage(partnerTid, ctx.chat.id, ctx.message.message_id);
+        await ctx.telegram.copyMessage(partnerTid, ctx.chat.id, ctx.message.message_id, {
+          protect_content: true
+        });
       } catch (err) {
         // Only end the chat if the partner actually blocked the bot (403 error).
         if (err.response && err.response.error_code === 403) {
