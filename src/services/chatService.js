@@ -1,7 +1,7 @@
 /**
  * Chat Service — pure chat-related database operations.
  */
-const { db } = require('../database');
+const { query, queryOne, transaction } = require('../database');
 const logger = require('../utils/logger');
 
 function getPartnerTelegramId(chat, userTelegramId) {
@@ -13,45 +13,55 @@ function getPartnerTelegramId(chat, userTelegramId) {
     : chat.user1_telegram_id.toString();
 }
 
-async function getActiveChatByTelegramId(telegramId, tx = db) {
+async function getActiveChatByTelegramId(telegramId, tx = null) {
   try {
-    const res = await tx.query(
-      'SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) AND ended_at IS NULL AND is_active = TRUE',
-      [telegramId.toString()]
+    const queryFn = tx ? tx.query : query;
+    const res = await queryFn(
+      'SELECT * FROM chats WHERE (user1_telegram_id = ? OR user2_telegram_id = ?) AND ended_at IS NULL AND is_active = TRUE',
+      [telegramId.toString(), telegramId.toString()]
     );
-    return res.rows[0];
+    return res[0];
   } catch (err) {
     logger.error(err, `Error in getActiveChatByTelegramId (${telegramId})`);
     return undefined;
   }
 }
 
-async function getLastChatByTelegramId(telegramId, tx = db) {
+async function getLastChatByTelegramId(telegramId, tx = null) {
   try {
-    const res = await tx.query(
-      'SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) ORDER BY started_at DESC LIMIT 1',
-      [telegramId.toString()]
+    const queryFn = tx ? tx.query : query;
+    const res = await queryFn(
+      'SELECT * FROM chats WHERE (user1_telegram_id = ? OR user2_telegram_id = ?) ORDER BY started_at DESC LIMIT 1',
+      [telegramId.toString(), telegramId.toString()]
     );
-    return res.rows[0];
+    return res[0];
   } catch (err) {
     logger.error(err, `Error in getLastChatByTelegramId (${telegramId})`);
     return undefined;
   }
 }
 
-async function endChat(chatId, tx = db) {
+async function endChat(chatId, tx = null) {
   try {
-    const res = await tx.query('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = $1 RETURNING *', [chatId]);
-    return res.rows[0];
+    const queryFn = tx ? tx.query : query;
+    const info = await queryFn('UPDATE chats SET ended_at = CURRENT_TIMESTAMP, is_active = FALSE WHERE id = ?', [chatId]);
+    
+    if (info.affectedRows > 0) {
+      const res = await queryFn('SELECT * FROM chats WHERE id = ?', [chatId]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error(err, `Error in endChat (${chatId})`);
     return undefined;
   }
 }
 
-async function saveMessage(chatId, senderTelegramId, content, mediaType = null, mediaFileId = null, tx = db) {
+async function saveMessage(chatId, senderTelegramId, content, mediaType = null, mediaFileId = null, tx = null) {
   try {
-    await tx.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES ($1, $2, $3, $4, $5)', [chatId, senderTelegramId, content, mediaType, mediaFileId]);
+    const queryFn = tx ? tx.query : query;
+    await queryFn('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES (?, ?, ?, ?, ?)', 
+                  [chatId, senderTelegramId, content, mediaType, mediaFileId]);
     return true;
   } catch (err) {
     logger.error(err, `Error in saveMessage (chat: ${chatId})`);

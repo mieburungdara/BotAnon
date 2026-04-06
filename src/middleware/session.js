@@ -1,7 +1,7 @@
 /**
  * Session Middleware — persistent session storage backed by the database.
  */
-const { db } = require('../database');
+const { query } = require('../database');
 const { t } = require('../locales');
 const logger = require('../utils/logger');
 
@@ -11,8 +11,8 @@ function createSessionMiddleware() {
     const key = `session:${ctx.from.id}`;
     let origStr = '{}';
     try {
-      const res = await db.query('SELECT data FROM sessions WHERE `key` = $1', [key]);
-      origStr = res.rows[0] ? res.rows[0].data : '{}';
+      const res = await query('SELECT data FROM sessions WHERE `key` = ?', [key]);
+      origStr = res.length > 0 ? res[0].data : '{}';
       ctx.session = JSON.parse(origStr);
     } catch (err) {
       origStr = '{}';
@@ -52,9 +52,9 @@ function createSessionMiddleware() {
       if (currStr === origStr) return;
       
       // MySQL UPSERT Atomic
-      await db.query(`
+      await query(`
         INSERT INTO sessions (\`key\`, data, updated_at) 
-        VALUES ($1, $2, CURRENT_TIMESTAMP) 
+        VALUES (?, ?, CURRENT_TIMESTAMP) 
         ON DUPLICATE KEY UPDATE 
         data = VALUES(data), updated_at = CURRENT_TIMESTAMP
       `, [key, currStr]);

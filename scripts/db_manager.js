@@ -1,4 +1,3 @@
-
 const { db } = require('../src/database');
 const logger = require('../src/utils/logger');
 
@@ -8,10 +7,10 @@ async function manageDatabase() {
     // 1. Ambil data user
     const users = await db.query('SELECT id, telegram_id, username, first_name, state, report_count FROM users');
     console.log('--- Current Users Matrix ---');
-    console.table(users.rows);
+    console.table(users);
 
     // 2. Beri tahu user mana yang terdeteksi sebagai "test"
-    const testUsers = users.rows.filter(u => 
+    const testUsers = users.filter(u => 
       (u.username && u.username.toLowerCase().includes('test')) || 
       (u.first_name && u.first_name.toLowerCase().includes('test')) ||
       (u.telegram_id.toString().length < 5)
@@ -48,7 +47,7 @@ async function manageDatabase() {
 
     // Hapus user test
     for (const u of testUsers) {
-      await db.query('DELETE FROM users WHERE id = $1', [u.id]);
+      await db.query('DELETE FROM users WHERE id = ?', [u.id]);
       console.log(`🗑️ Deleted test user: ${u.username || u.first_name} (${u.telegram_id})`);
     }
 

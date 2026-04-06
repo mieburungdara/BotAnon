@@ -1,13 +1,18 @@
 /**
  * Report Service — report-related database operations and evidence extraction.
  */
-const { db } = require('../database');
+const { query } = require('../database');
 const logger = require('../utils/logger');
 
 async function createReport(reporterId, reportedId, reason, details) {
   try {
-    const res = await db.query('INSERT INTO reports (reporter_id, reported_id, reason, details) VALUES ($1, $2, $3, $4) RETURNING *', [reporterId, reportedId, reason, details]);
-    return res.rows[0];
+    const info = await query('INSERT INTO reports (reporter_id, reported_id, reason, details) VALUES (?, ?, ?, ?)', [reporterId, reportedId, reason, details]);
+    
+    if (info.affectedRows > 0) {
+      const res = await query('SELECT * FROM reports WHERE id = ?', [info.insertId]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error(err, 'Error in createReport');
     return undefined;
@@ -25,8 +30,13 @@ async function incrementReportCount(reportedId, reason) {
   }
   
   try {
-    const res = await db.query(`UPDATE users SET report_count = COALESCE(report_count, 0) + 1, ${col} = COALESCE(${col}, 0) + 1 WHERE id = $1 RETURNING *`, [reportedId]);
-    return res.rows[0];
+    const info = await query(`UPDATE users SET report_count = COALESCE(report_count, 0) + 1, ${col} = COALESCE(${col}, 0) + 1 WHERE id = ?`, [reportedId]);
+    
+    if (info.affectedRows > 0) {
+      const res = await query('SELECT * FROM users WHERE id = ?', [reportedId]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error(err, 'Error incrementing report count');
     return undefined;

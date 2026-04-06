@@ -1,7 +1,7 @@
 /**
  * User Service — all user-related database operations.
  */
-const { db } = require('../database');
+const { query, queryOne, transaction } = require('../database');
 const logger = require('../utils/logger');
 
 /**
@@ -9,12 +9,14 @@ const logger = require('../utils/logger');
  * @param {number|string} telegramId 
  * @param {object} tx Optional transaction client
  */
-async function getUserByTelegramId(telegramId, tx = db) {
+async function getUserByTelegramId(telegramId, tx = null) {
   try {
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
     // ✅ Use BigInt to prevent 64-bit overflow in JS
     const tid = BigInt(telegramId);
-    const res = await tx.query('SELECT * FROM users WHERE telegram_id = $1', [tid]);
-    return res.rows[0];
+    const res = await queryFn('SELECT * FROM users WHERE telegram_id = ?', [tid]);
+    return res[0];
   } catch (err) {
     logger.error({ err, telegramId }, 'Error in getUserByTelegramId');
     return undefined;
@@ -24,10 +26,12 @@ async function getUserByTelegramId(telegramId, tx = db) {
 /**
  * Get user by internal Database ID.
  */
-async function getUserById(id, tx = db) {
+async function getUserById(id, tx = null) {
   try {
-    const res = await tx.query('SELECT * FROM users WHERE id = $1', [id]);
-    return res.rows[0];
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    const res = await queryFn('SELECT * FROM users WHERE id = ?', [id]);
+    return res[0];
   } catch (err) {
     logger.error({ err, id }, 'Error in getUserById');
     return undefined;
@@ -37,15 +41,24 @@ async function getUserById(id, tx = db) {
 /**
  * Create a new user with BigInt safety.
  */
-async function createUser(telegramId, username, firstName, lastName, tx = db) {
+async function createUser(telegramId, username, firstName, lastName, tx = null) {
   try {
     const tid = BigInt(telegramId);
-    const sql = 'INSERT IGNORE INTO users (telegram_id, username, first_name, last_name) VALUES ($1, $2, $3, $4) RETURNING *';
+    const sql = 'INSERT IGNORE INTO users (telegram_id, username, first_name, last_name) VALUES (?, ?, ?, ?)';
     
-    const res = await tx.query(sql, [tid, username, firstName, lastName]);
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    const info = await queryFn(sql, [tid, username, firstName, lastName]);
     
     // If user already existed, fetch them using the same transaction
-    return (res.rows && res.rows.length > 0) ? res.rows[0] : await getUserByTelegramId(telegramId, tx);
+    if (info.affectedRows > 0) {
+      // New user was inserted
+      const res = await queryFn('SELECT * FROM users WHERE telegram_id = ?', [tid]);
+      return res[0];
+    } else {
+      // User already existed, fetch them
+      return await getUserByTelegramId(telegramId, tx);
+    }
   } catch (err) {
     logger.error({ err, telegramId }, 'Error in createUser');
     return undefined;
@@ -55,15 +68,23 @@ async function createUser(telegramId, username, firstName, lastName, tx = db) {
 /**
  * Update user age, gender, and language.
  */
-async function updateUserProfile(telegramId, age, gender, language, tx = db) {
+async function updateUserProfile(telegramId, age, gender, language, tx = null) {
   try {
     const tid = BigInt(telegramId);
     
-    const res = await tx.query(
-      `UPDATE users SET age = COALESCE($1, age), gender = COALESCE($2, gender), language = COALESCE($3, language), updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $4 RETURNING *`,
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    
+    const info = await queryFn(
+      `UPDATE users SET age = COALESCE(?, age), gender = COALESCE(?, gender), language = COALESCE(?, language), updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`,
       [age, gender, language, tid]
     );
-    return res.rows[0];
+    
+    if (info.affectedRows > 0) {
+      const res = await queryFn('SELECT * FROM users WHERE telegram_id = ?', [tid]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error({ err, telegramId }, 'Error in updateUserProfile');
     return undefined;
@@ -73,22 +94,31 @@ async function updateUserProfile(telegramId, age, gender, language, tx = db) {
 /**
  * Update user state with Atomic Queue synchronization.
  */
-async function updateUserState(telegramId, state, tx = db) {
+async function updateUserState(telegramId, state, tx = null) {
   try {
     const tid = BigInt(telegramId);
     
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    
     // ✅ ATOMIC UPDATE: Handle the 'waiting_at' FIFO queue inline
-    let query = '';
+    let sql = '';
+    let params = [];
     if (state === 'waiting') {
-      query = `UPDATE users SET state = $1, waiting_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING id, state`;
+      sql = `UPDATE users SET state = ?, waiting_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`;
+      params = [state, tid];
     } else {
-      query = `UPDATE users SET state = $1, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING id, state`;
+      sql = `UPDATE users SET state = ?, waiting_at = NULL, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`;
+      params = [state, tid];
     }
     
-    const res = await tx.query(query, [state, tid]);
-    const user = res.rows[0];
+    const info = await queryFn(sql, params);
     
-    return user;
+    if (info.affectedRows > 0) {
+      const res = await queryFn('SELECT id, state FROM users WHERE telegram_id = ?', [tid]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error({ err, telegramId: telegramId.toString(), state }, 'Error in updateUserState');
     return undefined;
@@ -100,7 +130,7 @@ async function updateUserState(telegramId, state, tx = db) {
  */
 async function resetAllUsers() {
   try {
-    await db.query(`UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = CURRENT_TIMESTAMP`);
+    await query(`UPDATE users SET state = 'idle', waiting_at = NULL, report_count = 0, updated_at = CURRENT_TIMESTAMP`);
     return true;
   } catch (err) {
     logger.error(err, 'Error in resetAllUsers');
@@ -111,15 +141,23 @@ async function resetAllUsers() {
 /**
  * Update user zodiac.
  */
-async function updateUserZodiac(telegramId, zodiac, tx = db) {
+async function updateUserZodiac(telegramId, zodiac, tx = null) {
   try {
     const tid = BigInt(telegramId);
-
-    const res = await tx.query(
-      `UPDATE users SET zodiac = $1, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $2 RETURNING *`,
+    
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    
+    const info = await queryFn(
+      `UPDATE users SET zodiac = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`,
       [zodiac, tid]
     );
-    return res.rows[0];
+    
+    if (info.affectedRows > 0) {
+      const res = await queryFn('SELECT * FROM users WHERE telegram_id = ?', [tid]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error({ err, telegramId, zodiac }, 'Error in updateUserZodiac');
     return undefined;
@@ -129,15 +167,23 @@ async function updateUserZodiac(telegramId, zodiac, tx = db) {
 /**
  * Sync Telegram identity metadata.
  */
-async function syncUserIdentity(tid, uname, fname, lname, tx = db) {
+async function syncUserIdentity(tid, uname, fname, lname, tx = null) {
   try {
     const btid = BigInt(tid);
-
-    const res = await tx.query(
-      `UPDATE users SET username = $1, first_name = $2, last_name = $3, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = $4 RETURNING *`, 
+    
+    // Use provided transaction or default to direct query
+    const queryFn = tx ? tx.query : query;
+    
+    const info = await queryFn(
+      `UPDATE users SET username = ?, first_name = ?, last_name = ?, updated_at = CURRENT_TIMESTAMP WHERE telegram_id = ?`, 
       [uname, fname, lname, btid]
     );
-    return res.rows[0];
+    
+    if (info.affectedRows > 0) {
+      const res = await queryFn('SELECT * FROM users WHERE telegram_id = ?', [btid]);
+      return res[0];
+    }
+    return undefined;
   } catch (err) {
     logger.error({ err, tid }, 'Sync identity error');
     return undefined;
@@ -151,5 +197,5 @@ module.exports = {
   updateUserProfile,
   updateUserState,
   updateUserZodiac,
-  syncUserIdentity,
+  syncUserIdentity
 };

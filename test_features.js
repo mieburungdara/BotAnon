@@ -10,17 +10,17 @@ async function runFeatureTests() {
   try {
     await initDB();
     const testId1 = '999001';
-// 6. Test Media (Animation/Video Note)
+    // 6. Test Media (Animation/Video Note)
     console.log('\n--- 6. Testing Media Handling (Animation) ---');
     const animId = 'file_id_animation_123';
     const activeChatResult = await db.query('SELECT id FROM chats WHERE ended_at IS NULL LIMIT 1');
-    if (!activeChatResult.rows.length) {
+    if (activeChatResult.length === 0) {
         throw new Error('No active chat found for media test');
     }
-    const activeChatId = activeChatResult.rows[0].id;
-    await db.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES ($1, $2, $3, $4, $5)', 
+    const activeChatId = activeChatResult[0].id;
+    await db.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES (?, ?, ?, ?, ?)', 
                    [activeChatId, testId1, 'look at this!', 'animation', animId]);
-    const animMsg = (await db.query('SELECT * FROM messages WHERE media_type = $1 LIMIT 1', ['animation'])).rows[0];
+    const animMsg = (await db.query('SELECT * FROM messages WHERE media_type = ? LIMIT 1', ['animation']))[0];
     if (animMsg && animMsg.media_file_id === animId) {
         console.log('✅ Media Handling (Animation): PASSED');
     } else {
@@ -37,21 +37,21 @@ async function runFeatureTests() {
     const testIdB = '999011';
     const testIdC = '999012';
     
-     // Clean up any existing test users and their chats
-     const cleanupIds = [testIdA, testIdB, testIdC];
-     for (const cid of cleanupIds) {
-       await db.query('DELETE FROM chats WHERE user1_telegram_id = $1 OR user2_telegram_id = $1', [cid]);
-       await db.query('DELETE FROM users WHERE telegram_id = $1', [cid]);
-     }
+    // Clean up any existing test users and their chats
+    const cleanupIds = [testIdA, testIdB, testIdC];
+    for (const cid of cleanupIds) {
+      await db.query('DELETE FROM chats WHERE user1_telegram_id = ? OR user2_telegram_id = ?', [cid, cid]);
+      await db.query('DELETE FROM users WHERE telegram_id = ?', [cid]);
+    }
     
     // Create userA (will be the initiator who calls findMatchForUser)
-    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
+    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES (?, ?, ?, ?, ?, ?, ?)', 
                   [testIdA, 'userA', 'waiting', 25, 'male', 'Indonesian', 'Aries']);
     // Create userB (waiting, same language)
-    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
+    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES (?, ?, ?, ?, ?, ?, ?)', 
                   [testIdB, 'userB', 'waiting', 23, 'female', 'Indonesian', 'Leo']);
     // Create userC (waiting, same language)
-    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
+    await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES (?, ?, ?, ?, ?, ?, ?)', 
                   [testIdC, 'userC', 'waiting', 24, 'female', 'Indonesian', 'Gemini']);
     
     // Simulate two concurrent match attempts: userA tries to match, and simultaneously
@@ -62,29 +62,29 @@ async function runFeatureTests() {
     
      const matchAttempt1 = db.transaction(async (tx) => {
        // Lock both initiator and waiter rows to prevent race conditions
-       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE', [testIdA])).rows[0];
+       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = ? FOR UPDATE', [testIdA]))[0];
        if (!initiator || initiator.state !== 'waiting') return null;
        
-       const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian'])).rows[0];
+       const waiter = (await tx.query('SELECT * FROM users WHERE state = ? AND telegram_id != ? AND language = ? ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian']))[0];
        if (!waiter) return null;
        
-       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
-       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
+       await tx.query('UPDATE users SET state = ? WHERE telegram_id = ?', ['chatting', testIdA]);
+       await tx.query('UPDATE users SET state = ? WHERE telegram_id = ?', ['chatting', waiter.telegram_id.toString()]);
+       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES (?, ?)', [testIdA, waiter.telegram_id.toString()]);
        return { initiator: testIdA, partner: waiter.telegram_id.toString() };
      });
     
      const matchAttempt2 = db.transaction(async (tx) => {
        // Lock both initiator and waiter rows to prevent race conditions
-       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE', [testIdA])).rows[0];
+       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = ? FOR UPDATE', [testIdA]))[0];
        if (!initiator || initiator.state !== 'waiting') return null;
        
-       const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian'])).rows[0];
+       const waiter = (await tx.query('SELECT * FROM users WHERE state = ? AND telegram_id != ? AND language = ? ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian']))[0];
        if (!waiter) return null;
        
-       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
-       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
+       await tx.query('UPDATE users SET state = ? WHERE telegram_id = ?', ['chatting', testIdA]);
+       await tx.query('UPDATE users SET state = ? WHERE telegram_id = ?', ['chatting', waiter.telegram_id.toString()]);
+       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES (?, ?)', [testIdA, waiter.telegram_id.toString()]);
        return { initiator: testIdA, partner: waiter.telegram_id.toString() };
      });
     
@@ -110,7 +110,7 @@ async function runFeatureTests() {
     }
     
     // Verify userA is only in ONE active chat
-    const userAChats = (await db.query('SELECT * FROM chats WHERE (user1_telegram_id = $1 OR user2_telegram_id = $1) AND ended_at IS NULL', [testIdA])).rows;
+    const userAChats = await db.query('SELECT * FROM chats WHERE (user1_telegram_id = ? OR user2_telegram_id = ?) AND ended_at IS NULL', [testIdA, testIdA]);
     if (userAChats.length <= 1) {
       console.log(`✅ UserA active chat count: PASSED (${userAChats.length} active chat)`);
     } else {
@@ -118,9 +118,9 @@ async function runFeatureTests() {
     }
     
     // Cleanup — delete chats first to avoid FK constraint violations
-    await db.query('DELETE FROM chats WHERE user1_telegram_id IN ($1, $2, $3) OR user2_telegram_id IN ($1, $2, $3)', [testIdA, testIdB, testIdC]);
+    await db.query('DELETE FROM chats WHERE user1_telegram_id IN (?, ?, ?) OR user2_telegram_id IN (?, ?, ?)', [testIdA, testIdB, testIdC, testIdA, testIdB, testIdC]);
     for (const cid of cleanupIds) {
-      await db.query('DELETE FROM users WHERE telegram_id = $1', [cid]);
+      await db.query('DELETE FROM users WHERE telegram_id = ?', [cid]);
     }
 
     console.log('\n✨ ALL ADVANCED FEATURE TESTS PASSED SUCCESSFULLY! ✨');
