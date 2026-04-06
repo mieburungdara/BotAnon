@@ -87,8 +87,8 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
     const tid = BigInt(telegramId);
     
     const matchResult = await db.transaction(async (tx) => {
-      // ✅ Fetch full details for the initiator
-      const uRes = await tx.query('SELECT * FROM users WHERE telegram_id = $1', [tid]);
+      // ✅ Fetch full details for the initiator WITH LOCK to prevent concurrent match attempts
+      const uRes = await tx.query('SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE', [tid]);
       const user = uRes.rows[0];
       if (!user) return null;
 
@@ -96,7 +96,6 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
 
       // ✅ Fetch full details for the partner in queue
       const qQuery = 'SELECT * FROM users WHERE state = $1 AND language = $2 AND id != $3 ORDER BY waiting_at ASC LIMIT 1 FOR UPDATE SKIP LOCKED';
-      
       const qRes = await tx.query(qQuery, ['waiting', targetLang, user.id]);
       const waitingUser = qRes.rows[0];
 
@@ -106,9 +105,9 @@ async function findMatchForUser(bot, telegramId, userLang, _depth = 0) {
         return { user, waitingUser, chat: newChat };
       }
 
-// ✅ FIX Bug M3: Transition initiator into 'waiting' queue ATOMICALLY within this transaction
-       const ts = new Date();
-       await tx.query(`UPDATE users SET state = 'waiting', waiting_at = COALESCE(waiting_at, $2), updated_at = $2 WHERE id = $1`, [user.id, ts]);
+      // ✅ FIX Bug M3: Transition initiator into 'waiting' queue ATOMICALLY within this transaction
+      const ts = new Date();
+      await tx.query(`UPDATE users SET state = 'waiting', waiting_at = COALESCE(waiting_at, $2), updated_at = $2 WHERE id = $1`, [user.id, ts]);
       return null;
     });
 

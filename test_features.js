@@ -10,17 +10,21 @@ async function runFeatureTests() {
   try {
     await initDB();
     const testId1 = '999001';
-    // 6. Test Media (Animation/Video Note)
+// 6. Test Media (Animation/Video Note)
     console.log('\n--- 6. Testing Media Handling (Animation) ---');
     const animId = 'file_id_animation_123';
-    const activeChatId = (await db.query('SELECT id FROM chats WHERE ended_at IS NULL LIMIT 1')).rows[0].id;
+    const activeChatResult = await db.query('SELECT id FROM chats WHERE ended_at IS NULL LIMIT 1');
+    if (!activeChatResult.rows.length) {
+        throw new Error('No active chat found for media test');
+    }
+    const activeChatId = activeChatResult.rows[0].id;
     await db.query('INSERT INTO messages (chat_id, sender_telegram_id, content, media_type, media_file_id) VALUES ($1, $2, $3, $4, $5)', 
-                  [activeChatId, testId1, 'look at this!', 'animation', animId]);
+                   [activeChatId, testId1, 'look at this!', 'animation', animId]);
     const animMsg = (await db.query('SELECT * FROM messages WHERE media_type = $1 LIMIT 1', ['animation'])).rows[0];
     if (animMsg && animMsg.media_file_id === animId) {
-      console.log('✅ Media Handling (Animation): PASSED');
+        console.log('✅ Media Handling (Animation): PASSED');
     } else {
-      throw new Error('Media handling failed');
+        throw new Error('Media handling failed');
     }
 
     // 7. FEATURE: Concurrent Matchmaking Race Condition Test
@@ -33,11 +37,12 @@ async function runFeatureTests() {
     const testIdB = '999011';
     const testIdC = '999012';
     
-    // Clean up any existing test users
-    const cleanupIds = [testIdA, testIdB, testIdC];
-    for (const cid of cleanupIds) {
-      await db.query('DELETE FROM users WHERE telegram_id = $1', [cid]);
-    }
+     // Clean up any existing test users and their chats
+     const cleanupIds = [testIdA, testIdB, testIdC];
+     for (const cid of cleanupIds) {
+       await db.query('DELETE FROM chats WHERE user1_telegram_id = $1 OR user2_telegram_id = $1', [cid]);
+       await db.query('DELETE FROM users WHERE telegram_id = $1', [cid]);
+     }
     
     // Create userA (will be the initiator who calls findMatchForUser)
     await db.query('INSERT INTO users (telegram_id, username, state, age, gender, language, zodiac) VALUES ($1, $2, $3, $4, $5, $6, $7)', 
@@ -55,30 +60,33 @@ async function runFeatureTests() {
     let match1Result = null;
     let match2Result = null;
     
-    const matchAttempt1 = db.transaction(async (tx) => {
-      const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1', ['waiting', testIdA, 'Indonesian'])).rows[0];
-      if (!waiter) return null;
-      // Lock initiator row (simulating the FOR UPDATE fix)
-      const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1', [testIdA])).rows[0];
-      if (!initiator || initiator.state !== 'waiting') return null;
-      
-      await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
-      await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-      await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
-      return { initiator: testIdA, partner: waiter.telegram_id.toString() };
-    });
+     const matchAttempt1 = db.transaction(async (tx) => {
+       // Lock both initiator and waiter rows to prevent race conditions
+       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE', [testIdA])).rows[0];
+       if (!initiator || initiator.state !== 'waiting') return null;
+       
+       const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian'])).rows[0];
+       if (!waiter) return null;
+       
+       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
+       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
+       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
+       return { initiator: testIdA, partner: waiter.telegram_id.toString() };
+     });
     
-    const matchAttempt2 = db.transaction(async (tx) => {
-      const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1', ['waiting', testIdA, 'Indonesian'])).rows[0];
-      if (!waiter) return null;
-      const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1', [testIdA])).rows[0];
-      if (!initiator || initiator.state !== 'waiting') return null;
-      
-      await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
-      await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
-      await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
-      return { initiator: testIdA, partner: waiter.telegram_id.toString() };
-    });
+     const matchAttempt2 = db.transaction(async (tx) => {
+       // Lock both initiator and waiter rows to prevent race conditions
+       const initiator = (await tx.query('SELECT * FROM users WHERE telegram_id = $1 FOR UPDATE', [testIdA])).rows[0];
+       if (!initiator || initiator.state !== 'waiting') return null;
+       
+       const waiter = (await tx.query('SELECT * FROM users WHERE state = $1 AND telegram_id != $2 AND language = $3 ORDER BY updated_at ASC LIMIT 1 FOR UPDATE', ['waiting', testIdA, 'Indonesian'])).rows[0];
+       if (!waiter) return null;
+       
+       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', testIdA]);
+       await tx.query('UPDATE users SET state = $1 WHERE telegram_id = $2', ['chatting', waiter.telegram_id.toString()]);
+       await tx.query('INSERT INTO chats (user1_telegram_id, user2_telegram_id) VALUES ($1, $2)', [testIdA, waiter.telegram_id.toString()]);
+       return { initiator: testIdA, partner: waiter.telegram_id.toString() };
+     });
     
     // Run both attempts concurrently
     const results = await Promise.allSettled([matchAttempt1, matchAttempt2]);
