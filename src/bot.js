@@ -80,8 +80,8 @@ const reportFlow = createReportFlow(bot, boundFindMatch, async (ctx) => {
        logger.warn({ userId: ctx.from.id, reportedId: ctx.session.reportedId }, 'Report submission skipped — missing user or reportedId');
      }
    } catch (err) {
-     logger.error(err, 'Submit report error');
-     await ctx.reply(t('something_went_wrong', lang)).catch(() => {});
+      logger.error(err, 'Submit report error');
+      await ctx.reply(t('something_went_wrong', lang)).catch((err) => logger.error(err, 'Failed to send error message to user'));
    }
    ctx.session.reportDetails = null;
    ctx.session.attachedEvidence = null;

@@ -27,7 +27,7 @@ function registerFindCommand(bot, findMatchForUser, sendRatingPrompt) {
            }
            
            // Notify partner clearly that their partner left to find someone else
-           await ctx.telegram.sendMessage(partnerTid, t('partner_ended_chat', partnerLang)).catch(() => {});
+            await ctx.telegram.sendMessage(partnerTid, t('partner_ended_chat', partnerLang)).catch((err) => logger.error(err, 'Failed to send partner ended chat message'));
            await sendRatingPrompt(partnerTid, tid, partnerLang);
            await sendRatingPrompt(tid, partnerTid, lang);
         }

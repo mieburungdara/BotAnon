@@ -160,7 +160,7 @@ function createProfileSetupScene(findMatchForUser) {
       await ctx.scene.leave();
     } catch (err) {
       logger.error(err, 'Zodiac selection error');
-      await ctx.reply(t('something_went_wrong', ctx.session.language || 'English')).catch(() => {});
+       await ctx.reply(t('something_went_wrong', ctx.session.language || 'English')).catch((err) => logger.error(err, 'Failed to send error message in profile setup'));
     } finally {
       ctx.session.processing = false;
     }
